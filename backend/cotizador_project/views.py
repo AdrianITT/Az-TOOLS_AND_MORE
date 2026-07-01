@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db.models import ProtectedError
+from django.http import FileResponse
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -10,7 +12,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .mixins import OrganizationFilterMixin
-from .models import Cliente, Cotizacion, Invitacion, ItemCotizacion, Servicio, User
+from .models import AtributoPlantilla, Cliente, Cotizacion, CotizacionDetalle, Invitacion, Servicio, User
+from .pdf import generar_pdf_cotizacion, enviar_pdf_por_email
 from .permissions import (
     HasRolPermission,
     PuedeCrearCotizaciones,
@@ -20,10 +23,12 @@ from .permissions import (
 )
 from .serializers import (
     AceptarInvitacionSerializer,
+    AtributoPlantillaSerializer,
     ClienteSerializer,
+    CotizacionDetalleSerializer,
     CotizacionSerializer,
     InvitacionSerializer,
-    ItemCotizacionSerializer,
+    RegistroOrganizacionSerializer,
     ServicioSerializer,
     UserSerializer,
 )
@@ -60,7 +65,7 @@ class ServicioViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         'create': 'crear', 'update': 'editar',
         'partial_update': 'editar', 'destroy': 'eliminar',
     }
-    filterset_fields = ['tipo', 'activo']
+    filterset_fields = ['categoria', 'activo']
     search_fields = ['nombre']
 
     def perform_create(self, serializer):
@@ -68,6 +73,31 @@ class ServicioViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
             organization=self.request.user.organization,
             creado_por=self.request.user,
         )
+
+
+class AtributoPlantillaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
+    """Plantillas de atributos dinámicos por categoría, de la organización actual."""
+
+    queryset = AtributoPlantilla.objects.all()
+    serializer_class = AtributoPlantillaSerializer
+    permission_classes = [IsAuthenticated, HasRolPermission]
+    permiso_por_accion = {
+        'create': 'crear', 'update': 'editar',
+        'partial_update': 'editar', 'destroy': 'eliminar',
+    }
+    filterset_fields = ['categoria']
+    search_fields = ['nombre', 'categoria']
+
+    def perform_create(self, serializer):
+        serializer.save(organization=self.request.user.organization)
+
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError(
+                'No se puede borrar este atributo porque ya está en uso en servicios o cotizaciones.'
+            )
 
 
 class CotizacionViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
@@ -100,16 +130,50 @@ class CotizacionViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         cotizacion = self.get_object()
         nuevo_estado = request.data.get('estado')
 
+        estados_validos = dict(Cotizacion.ESTADO_CHOICES)
+        if nuevo_estado not in estados_validos:
+            raise ValidationError({
+                'estado': f'"{nuevo_estado}" no es un estado válido. Opciones: {", ".join(estados_validos)}.'
+            })
+
         cotizacion.estado = nuevo_estado
         cotizacion.save()
         return Response(self.get_serializer(cotizacion).data)
 
+    @action(detail=True, methods=['get'])
+    def pdf(self, request, pk=None):
+        """Descargar cotización como PDF"""
+        cotizacion = self.get_object()
+        pdf_buffer = generar_pdf_cotizacion(cotizacion)
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=f"{cotizacion.numero}.pdf",
+            content_type='application/pdf'
+        )
 
-class ItemCotizacionViewSet(viewsets.ModelViewSet):
+    @action(detail=True, methods=['post'])
+    def compartir_email(self, request, pk=None):
+        """Enviar cotización por email con PDF adjunto"""
+        cotizacion = self.get_object()
+        email_destino = request.data.get('email_destino', '').strip()
+
+        if not email_destino:
+            raise ValidationError({'email_destino': 'Email es requerido'})
+
+        exito, mensaje = enviar_pdf_por_email(cotizacion, email_destino)
+
+        if exito:
+            return Response({'success': True, 'message': mensaje}, status=200)
+        else:
+            raise ValidationError({'error': mensaje})
+
+
+class CotizacionDetalleViewSet(viewsets.ModelViewSet):
     """Items de cotización."""
 
-    queryset = ItemCotizacion.objects.all()
-    serializer_class = ItemCotizacionSerializer
+    queryset = CotizacionDetalle.objects.all()
+    serializer_class = CotizacionDetalleSerializer
     permission_classes = [
         IsAuthenticated, PuedeCrearCotizaciones, PuedeEliminarCotizaciones,
     ]
@@ -202,6 +266,33 @@ class AceptarInvitacionView(APIView):
 
     def post(self, request):
         serializer = AceptarInvitacionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            {
+                'token': user.auth_token.key,
+                'user': UserSerializer(user).data,
+            },
+            status=201,
+        )
+
+
+class MeView(APIView):
+    """Perfil del usuario autenticado (organización y flags de permiso)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response(UserSerializer(request.user).data)
+
+
+class RegistroOrganizacionView(APIView):
+    """Endpoint público: crea una Organization nueva junto con su primer usuario admin."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = RegistroOrganizacionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(

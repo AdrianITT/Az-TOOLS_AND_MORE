@@ -51,4 +51,27 @@ export const api = {
   delete: (path) => request(path, { method: 'DELETE' }),
 }
 
+function firstMessage(value) {
+  if (!value) return null
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = firstMessage(item)
+      if (found) return found
+    }
+    return null
+  }
+  if (typeof value === 'object') {
+    for (const key of Object.keys(value)) {
+      const found = firstMessage(value[key])
+      if (found) return found
+    }
+  }
+  return null
+}
+
+export function getErrorMessage(err, fallback = 'Ocurrió un error') {
+  return err?.data?.detail || firstMessage(err?.data) || fallback
+}
+
 export { ApiError }

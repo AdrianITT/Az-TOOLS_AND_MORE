@@ -1,15 +1,20 @@
 from rest_framework import serializers
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from .models import (
+    AtributoPlantilla,
+    AtributoPlantillaOpcion,
     Cliente,
     Cotizacion,
+    CotizacionDetalle,
+    CotizacionValor,
     Invitacion,
-    ItemCotizacion,
     Organization,
-    PastelServicio,
     Servicio,
-    TapiceriaServicio,
+    ServicioValor,
     User,
+    validar_valor_atributo,
 )
 
 
@@ -47,57 +52,127 @@ class ClienteSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'organization', 'creado', 'actualizado']
 
 
+class AtributoPlantillaOpcionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AtributoPlantillaOpcion
+        fields = ['id', 'valor', 'orden']
+        read_only_fields = ['id']
+
+
+class AtributoPlantillaSerializer(serializers.ModelSerializer):
+    opciones = AtributoPlantillaOpcionSerializer(many=True, required=False)
+
+    class Meta:
+        model = AtributoPlantilla
+        fields = [
+            'id', 'organization', 'categoria', 'nombre', 'tipo',
+            'obligatorio', 'orden', 'creado', 'opciones',
+        ]
+        read_only_fields = ['id', 'organization', 'creado']
+
+    def create(self, validated_data):
+        opciones_data = validated_data.pop('opciones', [])
+        atributo = AtributoPlantilla.objects.create(**validated_data)
+        for opcion_data in opciones_data:
+            AtributoPlantillaOpcion.objects.create(atributo=atributo, **opcion_data)
+        return atributo
+
+    def update(self, instance, validated_data):
+        opciones_data = validated_data.pop('opciones', None)
+        instance = super().update(instance, validated_data)
+        if opciones_data is not None:
+            instance.opciones.all().delete()
+            for opcion_data in opciones_data:
+                AtributoPlantillaOpcion.objects.create(atributo=instance, **opcion_data)
+        return instance
+
+
+class ServicioValorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServicioValor
+        fields = ['id', 'atributo', 'valor']
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        try:
+            attrs['valor'] = validar_valor_atributo(attrs['atributo'], attrs.get('valor', ''))
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message)
+        return attrs
+
+
 class ServicioSerializer(serializers.ModelSerializer):
+    valores = ServicioValorSerializer(many=True, required=False)
+
     class Meta:
         model = Servicio
         fields = [
-            'id', 'organization', 'nombre', 'tipo', 'descripcion',
-            'precio_base', 'activo', 'creado', 'creado_por',
+            'id', 'organization', 'nombre', 'categoria', 'descripcion',
+            'precio_base', 'activo', 'creado', 'creado_por', 'valores',
         ]
         read_only_fields = ['id', 'organization', 'creado', 'creado_por']
 
+    def create(self, validated_data):
+        valores_data = validated_data.pop('valores', [])
+        servicio = Servicio.objects.create(**validated_data)
+        for valor_data in valores_data:
+            ServicioValor.objects.create(servicio=servicio, **valor_data)
+        return servicio
 
-class PastelServicioSerializer(serializers.ModelSerializer):
+    def update(self, instance, validated_data):
+        valores_data = validated_data.pop('valores', None)
+        instance = super().update(instance, validated_data)
+        if valores_data is not None:
+            instance.valores.all().delete()
+            for valor_data in valores_data:
+                ServicioValor.objects.create(servicio=instance, **valor_data)
+        return instance
+
+
+class CotizacionValorSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PastelServicio
-        fields = [
-            'id', 'organization', 'nombre', 'tipo', 'descripcion',
-            'precio_base', 'activo', 'creado', 'creado_por',
-            'color', 'tipo_pastel', 'pisos', 'sabor', 'decoracion',
-            'peso_aproximado',
-        ]
-        read_only_fields = ['id', 'organization', 'creado', 'creado_por']
+        model = CotizacionValor
+        fields = ['id', 'atributo', 'valor']
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        try:
+            attrs['valor'] = validar_valor_atributo(attrs['atributo'], attrs.get('valor', ''))
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message)
+        return attrs
 
 
-class TapiceriaServicioSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TapiceriaServicio
-        fields = [
-            'id', 'organization', 'nombre', 'tipo', 'descripcion',
-            'precio_base', 'activo', 'creado', 'creado_por',
-            'material', 'color', 'medidas', 'tipo_mueble',
-            'estado_actual', 'requiere_instalacion',
-        ]
-        read_only_fields = ['id', 'organization', 'creado', 'creado_por']
-
-
-class ItemCotizacionSerializer(serializers.ModelSerializer):
+class CotizacionDetalleSerializer(serializers.ModelSerializer):
     subtotal = serializers.SerializerMethodField()
+    valores = CotizacionValorSerializer(many=True, required=False)
 
     class Meta:
-        model = ItemCotizacion
+        model = CotizacionDetalle
         fields = [
             'id', 'cotizacion', 'servicio', 'cantidad',
-            'precio_unitario', 'notas', 'creado', 'subtotal',
+            'precio_unitario', 'notas', 'creado', 'subtotal', 'valores',
         ]
         read_only_fields = ['id', 'creado']
 
     def get_subtotal(self, obj):
         return obj.calcular_subtotal()
 
+    def create(self, validated_data):
+        valores_data = validated_data.pop('valores', [])
+        detalle = CotizacionDetalle.objects.create(**validated_data)
+        # save() ya prellenó desde ServicioValor; aplicar overrides explícitos del cliente
+        for valor_data in valores_data:
+            CotizacionValor.objects.update_or_create(
+                detalle=detalle,
+                atributo=valor_data['atributo'],
+                defaults={'valor': valor_data['valor']},
+            )
+        return detalle
+
 
 class CotizacionSerializer(serializers.ModelSerializer):
-    items = ItemCotizacionSerializer(many=True, read_only=True)
+    items = CotizacionDetalleSerializer(many=True, read_only=True)
 
     class Meta:
         model = Cotizacion
@@ -171,4 +246,48 @@ class AceptarInvitacionSerializer(serializers.Serializer):
         )
         invitacion.estado = 'aceptada'
         invitacion.save()
+        return user
+
+
+class RegistroOrganizacionSerializer(serializers.Serializer):
+    """Crea una Organization nueva junto con su primer usuario (rol admin)."""
+
+    nombre = serializers.CharField(max_length=200)
+    email = serializers.EmailField()
+    ruc = serializers.CharField(required=False, allow_blank=True, default='')
+    pais = serializers.CharField(required=False, allow_blank=True, default='Mexico')
+    plan = serializers.ChoiceField(choices=Organization.PLAN_CHOICES, default='basico')
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+    first_name = serializers.CharField(required=False, allow_blank=True, default='')
+    last_name = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_nombre(self, value):
+        if Organization.objects.filter(nombre=value).exists():
+            raise serializers.ValidationError('Ya existe una organización con ese nombre')
+        return value
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError('Ese nombre de usuario ya existe')
+        return value
+
+    def create(self, validated_data):
+        organization = Organization.objects.create(
+            nombre=validated_data['nombre'],
+            email=validated_data['email'],
+            ruc=validated_data.get('ruc', ''),
+            pais=validated_data.get('pais', 'Mexico'),
+            plan=validated_data.get('plan', 'basico'),
+        )
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            organization=organization,
+            rol='admin',
+            **User.permisos_por_defecto('admin'),
+        )
         return user

@@ -21,10 +21,30 @@
   display: flex;
   flex-direction: column;
   padding: 12px;
+  gap: 16px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
 }
 
+.groupLabel {
+  padding: 0 12px;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+}
+
 .link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 10px 12px;
   border-radius: var(--radius);
   color: var(--color-text-muted);

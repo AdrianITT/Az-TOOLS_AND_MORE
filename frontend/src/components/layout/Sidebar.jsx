@@ -1,19 +1,42 @@
 import { NavLink } from 'react-router-dom'
+import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import styles from './Sidebar.module.css'
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Resumen', end: true },
-  { to: '/clientes', label: 'Clientes' },
-  { to: '/servicios', label: 'Servicios' },
-  { to: '/cotizaciones', label: 'Cotizaciones' },
-  { to: '/usuarios', label: 'Usuarios', permiso: 'puede_gestionar_usuarios' },
+const NAV_GROUPS = [
+  {
+    label: 'General',
+    items: [{ to: '/', label: 'Resumen', icon: LayoutDashboard, end: true }],
+  },
+  {
+    label: 'Comercial',
+    items: [
+      { to: '/clientes', label: 'Clientes', icon: Users },
+      { to: '/servicios', label: 'Servicios', icon: Package },
+      { to: '/cotizaciones', label: 'Cotizaciones', icon: FileText },
+    ],
+  },
+  {
+    label: 'Finanzas',
+    items: [{ to: '/finanzas', label: 'Finanzas', icon: Wallet }],
+  },
+  {
+    label: 'Herramientas',
+    items: [{ to: '/qr', label: 'Códigos QR', icon: QrCode }],
+  },
+  {
+    label: 'Administración',
+    items: [{ to: '/usuarios', label: 'Usuarios', icon: UserCog, permiso: 'puede_gestionar_usuarios' }],
+  },
 ]
 
 export function Sidebar({ open, onClose }) {
   const { user } = useAuth()
 
-  const items = NAV_ITEMS.filter((item) => !item.permiso || user?.[item.permiso])
+  const groups = NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.permiso || user?.[item.permiso]),
+  })).filter((group) => group.items.length > 0)
 
   return (
     <>
@@ -21,16 +44,22 @@ export function Sidebar({ open, onClose }) {
       <aside className={`${styles.sidebar} ${open ? styles.open : ''}`}>
         <div className={styles.brand}>AZ Cotizador</div>
         <nav className={styles.nav}>
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={onClose}
-              className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ''}`}
-            >
-              {item.label}
-            </NavLink>
+          {groups.map((group) => (
+            <div key={group.label} className={styles.group}>
+              <div className={styles.groupLabel}>{group.label}</div>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  onClick={onClose}
+                  className={({ isActive }) => `${styles.link} ${isActive ? styles.active : ''}`}
+                >
+                  <item.icon size={17} strokeWidth={2} />
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
       </aside>

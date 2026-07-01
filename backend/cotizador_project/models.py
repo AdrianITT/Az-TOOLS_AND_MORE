@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -216,14 +217,101 @@ class Cliente(models.Model):
         return f"{self.nombre} ({self.organization.nombre})"
 
 
-class Servicio(models.Model):
-    """Servicio base - padre para herencia"""
+class TipoAtributo(models.TextChoices):
+    TEXTO = 'text', 'Texto'
+    NUMERO = 'number', 'Número'
+    DECIMAL = 'decimal', 'Decimal'
+    BOOLEAN = 'boolean', 'Booleano'
+    COLOR = 'color', 'Color'
+    LISTA = 'select', 'Lista'
 
-    TIPO_CHOICES = [
-        ('pastel', 'Pastel'),
-        ('tapiceria', 'Tapicería'),
-        ('otro', 'Otro Servicio'),
-    ]
+
+def validar_valor_atributo(atributo, valor):
+    """Valida y normaliza `valor` según el tipo/opciones/obligatoriedad de `atributo`."""
+    if valor in (None, ''):
+        if atributo.obligatorio:
+            raise ValidationError(f"El atributo '{atributo.nombre}' es obligatorio")
+        return valor
+
+    if atributo.tipo == TipoAtributo.NUMERO:
+        try:
+            int(valor)
+        except (TypeError, ValueError):
+            raise ValidationError(f"'{atributo.nombre}' debe ser un número entero")
+    elif atributo.tipo == TipoAtributo.DECIMAL:
+        try:
+            Decimal(valor)
+        except Exception:
+            raise ValidationError(f"'{atributo.nombre}' debe ser un número decimal")
+    elif atributo.tipo == TipoAtributo.BOOLEAN:
+        if str(valor).lower() not in ('true', 'false', '1', '0'):
+            raise ValidationError(f"'{atributo.nombre}' debe ser verdadero/falso")
+    elif atributo.tipo == TipoAtributo.LISTA:
+        opciones = set(atributo.opciones.values_list('valor', flat=True))
+        if valor not in opciones:
+            raise ValidationError(f"'{valor}' no es una opción válida para '{atributo.nombre}'")
+
+    return valor
+
+
+class AtributoPlantilla(models.Model):
+    """Definición reutilizable de un atributo custom para una categoría de servicio de una organización."""
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='plantillas_atributo'
+    )
+    categoria = models.CharField(max_length=50)
+    nombre = models.CharField(max_length=100)
+    tipo = models.CharField(max_length=20, choices=TipoAtributo.choices)
+    obligatorio = models.BooleanField(default=False)
+    orden = models.PositiveIntegerField(default=0)
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Plantilla de Atributo'
+        verbose_name_plural = 'Plantillas de Atributo'
+        ordering = ['orden', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['organization', 'categoria', 'nombre'],
+                name='unique_plantilla_attr_por_categoria',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['organization', 'categoria']),
+        ]
+
+    def __str__(self):
+        return f"{self.categoria}.{self.nombre} ({self.organization.nombre})"
+
+
+class AtributoPlantillaOpcion(models.Model):
+    """Opción válida para un AtributoPlantilla de tipo lista (select)."""
+
+    atributo = models.ForeignKey(
+        AtributoPlantilla,
+        on_delete=models.CASCADE,
+        related_name='opciones'
+    )
+    valor = models.CharField(max_length=100)
+    orden = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Opción de Atributo'
+        verbose_name_plural = 'Opciones de Atributo'
+        ordering = ['orden', 'id']
+        constraints = [
+            models.UniqueConstraint(fields=['atributo', 'valor'], name='unique_opcion_por_atributo'),
+        ]
+
+    def __str__(self):
+        return f"{self.valor} ({self.atributo})"
+
+
+class Servicio(models.Model):
+    """Servicio/producto de catálogo. Sus atributos custom son dinámicos vía AtributoPlantilla."""
 
     organization = models.ForeignKey(
         Organization,
@@ -232,7 +320,7 @@ class Servicio(models.Model):
     )
 
     nombre = models.CharField(max_length=200)
-    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    categoria = models.CharField(max_length=50, blank=True)
     descripcion = models.TextField(blank=True, null=True)
     precio_base = models.DecimalField(max_digits=10, decimal_places=2)
 
@@ -248,46 +336,34 @@ class Servicio(models.Model):
             models.UniqueConstraint(fields=['organization', 'nombre'], name='unique_servicio_nombre_por_org'),
         ]
         indexes = [
-            models.Index(fields=['organization', 'tipo']),
+            models.Index(fields=['organization', 'categoria']),
         ]
 
     def __str__(self):
         return f"{self.nombre} ({self.organization.nombre})"
 
 
-class PastelServicio(Servicio):
-    """Pastel con atributos específicos"""
+class ServicioValor(models.Model):
+    """Valor por defecto de catálogo para un atributo dinámico de un Servicio."""
 
-    color = models.CharField(max_length=100)
-    tipo_pastel = models.CharField(max_length=100)  # Chocolate, vainilla, etc
-    pisos = models.IntegerField()
-    sabor = models.CharField(max_length=100)
-    decoracion = models.TextField(blank=True)
-    peso_aproximado = models.DecimalField(
-        max_digits=5,
-        decimal_places=2,
-        blank=True,
-        null=True
-    )
+    servicio = models.ForeignKey(Servicio, on_delete=models.CASCADE, related_name='valores')
+    atributo = models.ForeignKey(AtributoPlantilla, on_delete=models.PROTECT)
+    valor = models.TextField()
 
     class Meta:
-        verbose_name = 'Pastel'
-        verbose_name_plural = 'Pasteles'
+        verbose_name = 'Valor de Servicio'
+        verbose_name_plural = 'Valores de Servicio'
+        constraints = [
+            models.UniqueConstraint(fields=['servicio', 'atributo'], name='unique_valor_por_servicio_atributo'),
+        ]
 
+    def clean(self):
+        if self.atributo.categoria != self.servicio.categoria:
+            raise ValidationError('El atributo no pertenece a la categoría del servicio')
+        self.valor = validar_valor_atributo(self.atributo, self.valor)
 
-class TapiceriaServicio(Servicio):
-    """Tapicería con atributos específicos"""
-
-    material = models.CharField(max_length=100)
-    color = models.CharField(max_length=100)
-    medidas = models.CharField(max_length=100)  # "100x150cm"
-    tipo_mueble = models.CharField(max_length=100)  # Sofá, silla, etc
-    estado_actual = models.CharField(max_length=100)
-    requiere_instalacion = models.BooleanField(default=False)
-
-    class Meta:
-        verbose_name = 'Tapicería'
-        verbose_name_plural = 'Tapicerías'
+    def __str__(self):
+        return f"{self.servicio}.{self.atributo.nombre} = {self.valor}"
 
 
 class Cotizacion(models.Model):
@@ -374,7 +450,7 @@ class Cotizacion(models.Model):
         return f"{self.numero} ({self.organization.nombre})"
 
 
-class ItemCotizacion(models.Model):
+class CotizacionDetalle(models.Model):
     """Item de una cotización"""
 
     cotizacion = models.ForeignKey(
@@ -403,7 +479,18 @@ class ItemCotizacion(models.Model):
         return f"{self.servicio.nombre} x {self.cantidad}"
 
     def save(self, *args, **kwargs):
+        es_nuevo = self._state.adding
         super().save(*args, **kwargs)
+        if es_nuevo:
+            # Prellenar valores desde el catálogo (ServicioValor) del servicio
+            valores_existentes = set(self.valores.values_list('atributo_id', flat=True))
+            nuevos = [
+                CotizacionValor(detalle=self, atributo_id=sv.atributo_id, valor=sv.valor)
+                for sv in self.servicio.valores.all()
+                if sv.atributo_id not in valores_existentes
+            ]
+            if nuevos:
+                CotizacionValor.objects.bulk_create(nuevos)
         # Recalcular totales de la cotización
         self.cotizacion.calcular_totales()
 
@@ -411,6 +498,33 @@ class ItemCotizacion(models.Model):
         cotizacion = self.cotizacion
         super().delete(*args, **kwargs)
         cotizacion.calcular_totales()
+
+
+class CotizacionValor(models.Model):
+    """Valor de un atributo dinámico específico para un item de cotización.
+
+    Se prellena desde ServicioValor al crear el CotizacionDetalle, pero puede
+    sobreescribirse por cotización (ej. el cliente pide un sabor distinto).
+    """
+
+    detalle = models.ForeignKey(CotizacionDetalle, on_delete=models.CASCADE, related_name='valores')
+    atributo = models.ForeignKey(AtributoPlantilla, on_delete=models.PROTECT)
+    valor = models.TextField()
+
+    class Meta:
+        verbose_name = 'Valor de Cotización'
+        verbose_name_plural = 'Valores de Cotización'
+        constraints = [
+            models.UniqueConstraint(fields=['detalle', 'atributo'], name='unique_valor_por_detalle_atributo'),
+        ]
+
+    def clean(self):
+        if self.atributo.categoria != self.detalle.servicio.categoria:
+            raise ValidationError('El atributo no pertenece a la categoría del servicio')
+        self.valor = validar_valor_atributo(self.atributo, self.valor)
+
+    def __str__(self):
+        return f"{self.detalle}.{self.atributo.nombre} = {self.valor}"
 
 
 class Invitacion(models.Model):

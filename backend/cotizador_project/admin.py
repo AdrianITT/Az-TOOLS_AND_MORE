@@ -2,14 +2,15 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
 from .models import (
+    AtributoPlantilla,
+    AtributoPlantillaOpcion,
     Cliente,
     Cotizacion,
+    CotizacionDetalle,
     Invitacion,
-    ItemCotizacion,
     Organization,
-    PastelServicio,
     Servicio,
-    TapiceriaServicio,
+    ServicioValor,
     User,
 )
 
@@ -43,27 +44,34 @@ class ClienteAdmin(admin.ModelAdmin):
     search_fields = ['nombre', 'email']
 
 
+class AtributoPlantillaOpcionInline(admin.TabularInline):
+    model = AtributoPlantillaOpcion
+    extra = 1
+
+
+@admin.register(AtributoPlantilla)
+class AtributoPlantillaAdmin(admin.ModelAdmin):
+    list_display = ['nombre', 'organization', 'categoria', 'tipo', 'obligatorio']
+    list_filter = ['organization', 'categoria']
+    search_fields = ['nombre', 'categoria']
+    inlines = [AtributoPlantillaOpcionInline]
+
+
+class ServicioValorInline(admin.TabularInline):
+    model = ServicioValor
+    extra = 1
+
+
 @admin.register(Servicio)
 class ServicioAdmin(admin.ModelAdmin):
-    list_display = ['nombre', 'organization', 'tipo', 'precio_base', 'activo']
-    list_filter = ['organization', 'tipo', 'activo']
+    list_display = ['nombre', 'organization', 'categoria', 'precio_base', 'activo']
+    list_filter = ['organization', 'categoria', 'activo']
     search_fields = ['nombre']
+    inlines = [ServicioValorInline]
 
 
-@admin.register(PastelServicio)
-class PastelServicioAdmin(admin.ModelAdmin):
-    list_display = ['nombre', 'organization', 'sabor', 'pisos', 'precio_base']
-    list_filter = ['organization']
-
-
-@admin.register(TapiceriaServicio)
-class TapiceriaServicioAdmin(admin.ModelAdmin):
-    list_display = ['nombre', 'organization', 'material', 'medidas', 'precio_base']
-    list_filter = ['organization']
-
-
-class ItemCotizacionInline(admin.TabularInline):
-    model = ItemCotizacion
+class CotizacionDetalleInline(admin.TabularInline):
+    model = CotizacionDetalle
     extra = 1
 
 
@@ -72,7 +80,7 @@ class CotizacionAdmin(admin.ModelAdmin):
     list_display = ['numero', 'organization', 'cliente', 'estado', 'total', 'creado']
     list_filter = ['organization', 'estado']
     search_fields = ['numero', 'cliente__nombre']
-    inlines = [ItemCotizacionInline]
+    inlines = [CotizacionDetalleInline]
 
 
 @admin.register(Invitacion)
