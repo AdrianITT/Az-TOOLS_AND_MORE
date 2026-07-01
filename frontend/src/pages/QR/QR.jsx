@@ -24,7 +24,7 @@ export function QR() {
 
   function load() {
     setLoading(true)
-    api.get('/qr/codigos/')
+    api.get('/api/qr/codigos/')
       .then((res) => setCodigos(res.results ?? res))
       .catch(() => setError('Error al cargar QRs'))
       .finally(() => setLoading(false))
@@ -47,7 +47,7 @@ export function QR() {
     setError('')
     setSubmitting(true)
     try {
-      const response = await api.post('/qr/generar/', form)
+      const response = await api.post('/api/qr/codigos/generar/', form)
       if (response.png_base64) {
         setPreviewPng(`data:image/png;base64,${response.png_base64}`)
       }
@@ -68,7 +68,7 @@ export function QR() {
     setSubmitting(true)
     try {
       const payload = { ...form, guardar: true }
-      const response = await api.post('/qr/generar/', payload)
+      const response = await api.post('/api/qr/codigos/generar/', payload)
       setForm(emptyForm)
       setPreviewPng(null)
       load()
@@ -81,7 +81,7 @@ export function QR() {
 
   async function handleDescargar(id) {
     try {
-      const response = await api.get(`/qr/codigos/${id}/descarga/`)
+      const response = await api.get(`/api/qr/codigos/${id}/descarga/`)
       const url = window.URL.createObjectURL(new Blob([response]))
       const a = document.createElement('a')
       a.href = url
@@ -97,7 +97,7 @@ export function QR() {
     const email = prompt('Ingresa email para compartir:')
     if (!email) return
     try {
-      await api.post(`/qr/codigos/${qr.id}/compartir/`, { email })
+      await api.post(`/api/qr/codigos/${qr.id}/compartir/`, { email })
       alert(`QR compartido a ${email}`)
     } catch (err) {
       setError(getErrorMessage(err, 'Error al compartir'))
@@ -107,7 +107,7 @@ export function QR() {
   async function handleEliminar(id) {
     if (!window.confirm('¿Eliminar QR?')) return
     try {
-      await api.delete(`/qr/codigos/${id}/`)
+      await api.delete(`/api/qr/codigos/${id}/`)
       load()
     } catch (err) {
       setError(getErrorMessage(err, 'Error al eliminar'))
