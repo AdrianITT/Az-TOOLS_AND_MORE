@@ -1,0 +1,28 @@
+@import './styles/variables.css';
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+a {
+  color: var(--color-primary);
+}
