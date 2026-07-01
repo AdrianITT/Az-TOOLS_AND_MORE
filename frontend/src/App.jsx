@@ -15,6 +15,8 @@ import { Clientes } from './pages/Clientes/Clientes'
 import { Servicios } from './pages/Servicios/Servicios'
 import { Cotizaciones } from './pages/Cotizaciones/Cotizaciones'
 import { Usuarios } from './pages/Usuarios/Usuarios'
+import { Finanzas } from './pages/Finanzas/Finanzas'
+import { QR } from './pages/QR/QR'
 
 function App() {
   return (
@@ -37,6 +39,8 @@ function App() {
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/servicios" element={<Servicios />} />
             <Route path="/cotizaciones" element={<Cotizaciones />} />
+            <Route path="/finanzas" element={<Finanzas />} />
+            <Route path="/qr" element={<QR />} />
             <Route path="/usuarios" element={<Usuarios />} />
           </Route>
         </Route>

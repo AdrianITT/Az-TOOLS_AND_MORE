@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'cotizador_project',
+    'finanzas_app',
+    'qr_app',
 ]
 
 MIDDLEWARE = [
