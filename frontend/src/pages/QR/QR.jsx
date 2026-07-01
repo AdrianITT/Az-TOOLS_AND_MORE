@@ -6,7 +6,6 @@ import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input } from '../../components/ui/Input'
 import { Download, Share2, Edit2, Trash2, Plus, Copy, Image as ImageIcon } from 'lucide-react'
-import QRCode from 'qrcode.react'
 import styles from '../shared-form.module.css'
 
 const TABS = ['Generar', 'Mis QRs', 'Galería']
