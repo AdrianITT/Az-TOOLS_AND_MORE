@@ -5,6 +5,7 @@ import { Card } from '../../components/ui/Card'
 import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input } from '../../components/ui/Input'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Download, Share2, Edit2, Trash2, Plus, Copy, Image as ImageIcon } from 'lucide-react'
 import styles from '../shared-form.module.css'
 
@@ -20,10 +21,11 @@ export function QR() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   function load() {
     setLoading(true)
-    api.get('/api/qr/codigos/')
+    api.get('/qr/codigos/')
       .then((res) => setCodigos(res.results ?? res))
       .catch(() => setError('Error al cargar QRs'))
       .finally(() => setLoading(false))
@@ -46,7 +48,7 @@ export function QR() {
     setError('')
     setSubmitting(true)
     try {
-      const response = await api.post('/api/qr/codigos/generar/', form)
+      const response = await api.post('/qr/codigos/generar/', form)
       if (response.png_base64) {
         setPreviewPng(`data:image/png;base64,${response.png_base64}`)
       }
@@ -67,7 +69,7 @@ export function QR() {
     setSubmitting(true)
     try {
       const payload = { ...form, guardar: true }
-      const response = await api.post('/api/qr/codigos/generar/', payload)
+      const response = await api.post('/qr/codigos/generar/', payload)
       setForm(emptyForm)
       setPreviewPng(null)
       load()
@@ -80,8 +82,13 @@ export function QR() {
 
   async function handleDescargar(id) {
     try {
-      const response = await api.get(`/api/qr/codigos/${id}/descarga/`)
-      const url = window.URL.createObjectURL(new Blob([response]))
+      const token = localStorage.getItem('token')
+      const response = await fetch(`/api/qr/codigos/${id}/descarga/`, {
+        headers: { Authorization: `Token ${token}` },
+      })
+      if (!response.ok) throw new Error('Fallo al descargar QR')
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `qr_${id}.png`
@@ -96,7 +103,7 @@ export function QR() {
     const email = prompt('Ingresa email para compartir:')
     if (!email) return
     try {
-      await api.post(`/api/qr/codigos/${qr.id}/compartir/`, { email })
+      await api.post(`/qr/codigos/${qr.id}/compartir/`, { email })
       alert(`QR compartido a ${email}`)
     } catch (err) {
       setError(getErrorMessage(err, 'Error al compartir'))
@@ -104,9 +111,9 @@ export function QR() {
   }
 
   async function handleEliminar(id) {
-    if (!window.confirm('¿Eliminar QR?')) return
     try {
-      await api.delete(`/api/qr/codigos/${id}/`)
+      await api.delete(`/qr/codigos/${id}/`)
+      setConfirmDeleteId(null)
       load()
     } catch (err) {
       setError(getErrorMessage(err, 'Error al eliminar'))
@@ -268,7 +275,7 @@ export function QR() {
                     <Button variant="secondary" title="Compartir" onClick={() => handleCompartir(c)}>
                       <Share2 size={16} />
                     </Button>
-                    <Button variant="danger" title="Eliminar" onClick={() => handleEliminar(c.id)}>
+                    <Button variant="danger" title="Eliminar" onClick={() => setConfirmDeleteId(c.id)}>
                       <Trash2 size={16} />
                     </Button>
                   </div>
@@ -304,7 +311,7 @@ export function QR() {
                   <Button variant="secondary" size="sm" onClick={() => handleCompartir(qr)}>
                     <Share2 size={14} />
                   </Button>
-                  <Button variant="danger" size="sm" onClick={() => handleEliminar(qr.id)}>
+                  <Button variant="danger" size="sm" onClick={() => setConfirmDeleteId(qr.id)}>
                     <Trash2 size={14} />
                   </Button>
                 </div>
@@ -314,6 +321,15 @@ export function QR() {
           {codigos.length === 0 && <p>No hay QRs para mostrar</p>}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Eliminar código QR"
+        message="Esta acción no se puede deshacer. ¿Querés eliminar este QR?"
+        confirmLabel="Eliminar"
+        onConfirm={() => handleEliminar(confirmDeleteId)}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }

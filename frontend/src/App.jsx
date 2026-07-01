@@ -13,7 +13,9 @@ import { AceptarInvitacion } from './pages/AceptarInvitacion/AceptarInvitacion'
 import { Dashboard } from './pages/Dashboard/Dashboard'
 import { Clientes } from './pages/Clientes/Clientes'
 import { Servicios } from './pages/Servicios/Servicios'
+import { ServicioForm } from './pages/Servicios/ServicioForm'
 import { Cotizaciones } from './pages/Cotizaciones/Cotizaciones'
+import { CotizacionForm } from './pages/Cotizaciones/CotizacionForm'
 import { Usuarios } from './pages/Usuarios/Usuarios'
 import { Finanzas } from './pages/Finanzas/Finanzas'
 import { QR } from './pages/QR/QR'
@@ -38,7 +40,11 @@ function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/clientes" element={<Clientes />} />
             <Route path="/servicios" element={<Servicios />} />
+            <Route path="/servicios/nuevo" element={<ServicioForm />} />
+            <Route path="/servicios/:id" element={<ServicioForm />} />
             <Route path="/cotizaciones" element={<Cotizaciones />} />
+            <Route path="/cotizaciones/nueva" element={<CotizacionForm />} />
+            <Route path="/cotizaciones/:id" element={<CotizacionForm />} />
             <Route path="/finanzas" element={<Finanzas />} />
             <Route path="/qr" element={<QR />} />
             <Route path="/usuarios" element={<Usuarios />} />
