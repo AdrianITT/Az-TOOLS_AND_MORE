@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -262,6 +263,11 @@ export function QR() {
               },
               { key: 'titulo', header: 'Título' },
               { key: 'url_data', header: 'URL', render: (c) => c.url_data.substring(0, 30) + '...' },
+              {
+                key: 'cotizacion',
+                header: 'Cotización',
+                render: (c) => (c.cotizacion_numero ? <Link to={`/cotizaciones/${c.cotizacion}`}>{c.cotizacion_numero}</Link> : '—'),
+              },
               { key: 'descargado_veces', header: 'Descargas' },
               { key: 'creado', header: 'Creado', render: (c) => new Date(c.creado).toLocaleDateString() },
               {
@@ -304,6 +310,11 @@ export function QR() {
                 <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
                   {qr.url_data.substring(0, 30)}...
                 </p>
+                {qr.cotizacion_numero && (
+                  <p style={{ fontSize: '12px', marginBottom: '10px' }}>
+                    <Link to={`/cotizaciones/${qr.cotizacion}`}>Cotización {qr.cotizacion_numero}</Link>
+                  </p>
+                )}
                 <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                   <Button variant="info" size="sm" onClick={() => handleDescargar(qr.id)}>
                     <Download size={14} />

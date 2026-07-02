@@ -1,4 +1,7 @@
 import { useEffect, useState } from 'react'
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { Card } from '../../components/ui/Card'
@@ -12,9 +15,14 @@ const ESTADO_LABELS = {
   expirada: 'Expirada',
 }
 
+function formatMoneda(valor) {
+  return `$${Number(valor).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 export function Dashboard() {
   const { user } = useAuth()
   const [resumen, setResumen] = useState(null)
+  const [finanzas, setFinanzas] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -23,7 +31,19 @@ export function Dashboard() {
       .get('/reportes/resumen/')
       .then(setResumen)
       .catch(() => setError('No se pudo cargar el resumen'))
+    api
+      .get('/finanzas/dashboard/')
+      .then(setFinanzas)
+      .catch(() => {})
   }, [user])
+
+  const porEstadoData = resumen
+    ? Object.entries(resumen.por_estado).map(([estado, data]) => ({
+        estado: ESTADO_LABELS[estado] || estado,
+        cantidad: data.cantidad,
+        total: Number(data.total),
+      }))
+    : []
 
   return (
     <div>
@@ -61,6 +81,42 @@ export function Dashboard() {
               </Card>
             ))}
           </div>
+
+          {porEstadoData.length > 0 && (
+            <Card className={styles.chartCard}>
+              <strong>Total facturado por estado</strong>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={porEstadoData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="estado" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(value) => formatMoneda(value)} />
+                  <Bar dataKey="total" name="Total" fill="#3498db" />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          )}
+
+          {finanzas && finanzas.length > 0 && (
+            <>
+              <h2 className={styles.subtitle}>Finanzas — últimos 12 meses</h2>
+              <Card className={styles.chartCard}>
+                <strong>Ingresos, gastos y ganancia neta por mes</strong>
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={finanzas}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="mes" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(value) => formatMoneda(value)} />
+                    <Legend />
+                    <Line type="monotone" dataKey="total_ingresos" name="Ingresos" stroke="#2ecc71" dot={false} />
+                    <Line type="monotone" dataKey="total_gastos" name="Gastos" stroke="#e74c3c" dot={false} />
+                    <Line type="monotone" dataKey="ganancia" name="Ganancia neta" stroke="#3498db" dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+            </>
+          )}
         </>
       )}
     </div>

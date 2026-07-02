@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Share2, MessageCircle, Mail, PlusCircle, CheckCircle2, Circle } from 'lucide-react'
+import { Share2, MessageCircle, Mail, QrCode, Download, PlusCircle, CheckCircle2, Circle } from 'lucide-react'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -8,6 +8,7 @@ import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { Modal } from '../../components/ui/Modal'
 import formStyles from '../shared-form.module.css'
 import styles from './Cotizaciones.module.css'
 
@@ -94,6 +95,16 @@ export function CotizacionForm() {
 
   const [confirmRemoveId, setConfirmRemoveId] = useState(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
+  const [emailDestino, setEmailDestino] = useState('')
+  const [emailSending, setEmailSending] = useState(false)
+  const [emailError, setEmailError] = useState('')
+
+  const [qrModalOpen, setQrModalOpen] = useState(false)
+  const [qrPng, setQrPng] = useState(null)
+  const [qrLoading, setQrLoading] = useState(false)
+  const [qrError, setQrError] = useState('')
 
   const itemSubtotal = (Number(itemForm.cantidad) || 0) * (Number(itemForm.precio_unitario) || 0)
   const isItemPending = Boolean(itemForm.servicio)
@@ -295,15 +306,24 @@ export function CotizacionForm() {
   function abrirWhatsApp() {
     const enlace = `${window.location.origin}/cotizaciones/${id}`
     const mensaje = `Mira tu cotización: ${enlace}`
-    const url = `https://wa.me/?text=${encodeURIComponent(mensaje)}`
+    const telefono = clientesById[form.cliente]?.telefono?.replace(/\D/g, '')
+    const base = telefono ? `https://wa.me/${telefono}` : 'https://wa.me/'
+    const url = `${base}?text=${encodeURIComponent(mensaje)}`
     window.open(url, '_blank')
   }
 
-  async function compartirPorEmail() {
+  function abrirModalEmail() {
     const clienteEmail = clientesById[form.cliente]?.email
-    const email = prompt('Email destino:', clienteEmail || '')
-    if (!email) return
+    setEmailDestino(clienteEmail || '')
+    setEmailError('')
+    setEmailModalOpen(true)
+  }
 
+  async function confirmarEnvioEmail(event) {
+    event.preventDefault()
+    if (!emailDestino) return
+    setEmailSending(true)
+    setEmailError('')
     try {
       const token = localStorage.getItem('token')
       const response = await fetch(`/api/cotizaciones/${id}/compartir_email/`, {
@@ -312,7 +332,7 @@ export function CotizacionForm() {
           'Content-Type': 'application/json',
           Authorization: `Token ${token}`,
         },
-        body: JSON.stringify({ email_destino: email }),
+        body: JSON.stringify({ email_destino: emailDestino }),
       })
 
       if (!response.ok) {
@@ -320,10 +340,34 @@ export function CotizacionForm() {
         throw new Error(data.error || 'Fallo al enviar email')
       }
 
+      setEmailModalOpen(false)
       flashSuccess('Email enviado correctamente')
     } catch (err) {
       console.error('Error compartiendo por email:', err)
-      setError(`Error: ${err.message}`)
+      setEmailError(err.message)
+    } finally {
+      setEmailSending(false)
+    }
+  }
+
+  async function generarQR() {
+    setQrModalOpen(true)
+    setQrLoading(true)
+    setQrError('')
+    setQrPng(null)
+    try {
+      const enlace = `${window.location.origin}/cotizaciones/${id}`
+      const response = await api.post('/qr/codigos/generar/', {
+        url_data: enlace,
+        titulo: cotizacion.numero,
+        cotizacion: id,
+        guardar: true,
+      })
+      setQrPng(`data:image/png;base64,${response.png_base64}`)
+    } catch (err) {
+      setQrError(getErrorMessage(err, 'No se pudo generar el QR'))
+    } finally {
+      setQrLoading(false)
     }
   }
 
@@ -393,7 +437,10 @@ export function CotizacionForm() {
               <Button type="button" variant="secondary" onClick={descargarPDF}>
                 Descargar PDF
               </Button>
-              <ShareMenu onWhatsApp={abrirWhatsApp} onEmail={compartirPorEmail} />
+              <Button type="button" variant="secondary" onClick={generarQR}>
+                <QrCode size={16} /> QR
+              </Button>
+              <ShareMenu onWhatsApp={abrirWhatsApp} onEmail={abrirModalEmail} />
             </div>
           </div>
 
@@ -545,6 +592,52 @@ export function CotizacionForm() {
         }}
         onCancel={() => setConfirmDiscard(false)}
       />
+
+      <Modal open={emailModalOpen} title="Enviar cotización por email" onClose={() => setEmailModalOpen(false)}>
+        <form onSubmit={confirmarEnvioEmail} className={formStyles.form}>
+          <Field label="Email destino">
+            <Input
+              type="email"
+              value={emailDestino}
+              onChange={(e) => setEmailDestino(e.target.value)}
+              required
+              autoFocus
+            />
+          </Field>
+          {emailError && <p className={formStyles.error}>{emailError}</p>}
+          <div className={formStyles.addButtonRow}>
+            <Button type="button" variant="secondary" onClick={() => setEmailModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={emailSending}>
+              {emailSending ? 'Enviando…' : 'Enviar'}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={qrModalOpen} title="Código QR de la cotización" onClose={() => setQrModalOpen(false)}>
+        {qrLoading && <p>Generando…</p>}
+        {qrError && <p className={formStyles.error}>{qrError}</p>}
+        {qrPng && (
+          <div style={{ textAlign: 'center' }}>
+            <img src={qrPng} alt="QR de la cotización" style={{ maxWidth: '260px' }} />
+            <div style={{ marginTop: 12 }}>
+              <Button
+                type="button"
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = qrPng
+                  link.download = `qr_${cotizacion.numero}.png`
+                  link.click()
+                }}
+              >
+                <Download size={16} /> Descargar PNG
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

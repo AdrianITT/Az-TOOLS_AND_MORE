@@ -9,6 +9,7 @@ from django.core.mail import EmailMessage
 
 from cotizador_project.mixins import OrganizationFilterMixin
 from cotizador_project.permissions import HasRolPermission
+from cotizador_project.models import Cotizacion
 from .models import CodigoQR
 from .serializers import CodigoQRSerializer, GenerarQRSerializer
 
@@ -63,6 +64,18 @@ class CodigoQRViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
             serializer.validated_data['color_bg'],
         )
 
+        cotizacion_id = serializer.validated_data.get('cotizacion')
+        cotizacion = None
+        if cotizacion_id:
+            cotizacion = Cotizacion.objects.filter(
+                id=cotizacion_id, organization=request.user.organization,
+            ).first()
+            if cotizacion is None:
+                return Response(
+                    {'error': 'La cotización indicada no existe en tu organización'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         # Si solicita guardar
         if serializer.validated_data.get('guardar'):
             qr = CodigoQR.objects.create(
@@ -73,6 +86,7 @@ class CodigoQRViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
                 color_fg=serializer.validated_data['color_fg'],
                 color_bg=serializer.validated_data['color_bg'],
                 forma=serializer.validated_data['forma'],
+                cotizacion=cotizacion,
                 creado_por=request.user,
             )
             return Response(CodigoQRSerializer(qr).data, status=status.HTTP_201_CREATED)

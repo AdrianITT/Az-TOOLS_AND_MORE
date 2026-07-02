@@ -17,6 +17,10 @@ class CodigoQR(models.Model):
     color_bg = models.CharField(max_length=7, default='#FFFFFF')
     logo = models.ImageField(upload_to='qr_logos/', blank=True, null=True)
     forma = models.CharField(max_length=20, choices=FORMA_CHOICES, default='square')
+    cotizacion = models.ForeignKey(
+        'cotizador_project.Cotizacion', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='qr_codigos',
+    )
     descargado_veces = models.IntegerField(default=0)
     creado_por = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name='qr_creados'
