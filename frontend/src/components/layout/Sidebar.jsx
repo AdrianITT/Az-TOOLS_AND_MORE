@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog } from 'lucide-react'
+import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog, TrendingUp } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import styles from './Sidebar.module.css'
 
@@ -18,7 +18,10 @@ const NAV_GROUPS = [
   },
   {
     label: 'Finanzas',
-    items: [{ to: '/finanzas', label: 'Finanzas', icon: Wallet }],
+    items: [
+      { to: '/finanzas', label: 'Finanzas', icon: Wallet },
+      { to: '/finanzas/fibras', label: 'FIBRAs', icon: TrendingUp },
+    ],
   },
   {
     label: 'Herramientas',

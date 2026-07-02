@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { PlusCircle, CheckCircle2, Circle } from 'lucide-react'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -44,6 +45,8 @@ export function ServicioForm() {
   const [atributoForm, setAtributoForm] = useState(emptyAtributoForm)
   const [atributoError, setAtributoError] = useState('')
   const [atributoSubmitting, setAtributoSubmitting] = useState(false)
+  const [highlightAtributoId, setHighlightAtributoId] = useState(null)
+  const [atributoJustAdded, setAtributoJustAdded] = useState(false)
   const [confirmDeleteAtributoId, setConfirmDeleteAtributoId] = useState(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
@@ -93,6 +96,7 @@ export function ServicioForm() {
   )
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(initialForm)
+  const isAtributoPending = Boolean(atributoForm.nombre.trim())
 
   function flashSuccess(message) {
     setSuccessMessage(message)
@@ -184,7 +188,7 @@ export function ServicioForm() {
     }
     setAtributoSubmitting(true)
     try {
-      await api.post('/atributos-plantilla/', {
+      const created = await api.post('/atributos-plantilla/', {
         categoria: categoriaActual,
         nombre: atributoForm.nombre,
         tipo: atributoForm.tipo,
@@ -197,8 +201,13 @@ export function ServicioForm() {
       })
       setAtributoForm(emptyAtributoForm)
       setShowAtributos(true)
-      loadAtributos()
+      await loadAtributos()
       flashSuccess('Atributo agregado')
+      setAtributoJustAdded(true)
+      setHighlightAtributoId(created.id)
+      setTimeout(() => setAtributoJustAdded(false), 2200)
+      setTimeout(() => setHighlightAtributoId(null), 1800)
+      document.getElementById('atributo-nombre-input')?.focus()
     } catch (err) {
       setAtributoError(getErrorMessage(err, 'No se pudo crear el atributo'))
     } finally {
@@ -328,6 +337,7 @@ export function ServicioForm() {
             <>
               <Table
                 rowKey={(a) => a.id}
+                rowClassName={(a) => (a.id === highlightAtributoId ? styles.rowJustAdded : undefined)}
                 emptyMessage="Sin atributos en esta categoría"
                 columns={[
                   { key: 'nombre', header: 'Nombre' },
@@ -346,10 +356,25 @@ export function ServicioForm() {
                 rows={atributosDeCategoria}
               />
 
-              <form className={formStyles.form} onSubmit={handleAtributoSubmit}>
+              <form className={`${formStyles.form} ${formStyles.draftCard}`} onSubmit={handleAtributoSubmit}>
+                <div className={formStyles.draftHeader}>
+                  <p className={formStyles.draftTitle}>
+                    <PlusCircle size={18} /> Nuevo atributo para "{categoriaActual}"
+                  </p>
+                  {isAtributoPending && (
+                    <span className={formStyles.pendingBadge}>
+                      <Circle size={8} fill="currentColor" /> Sin agregar todavía
+                    </span>
+                  )}
+                </div>
+                <p className={formStyles.draftHint}>
+                  Completá los datos y presioná "Agregar atributo a la categoría" para sumarlo. Mientras no lo hagas, no
+                  queda guardado.
+                </p>
+
                 <div className={formStyles.row}>
                   <Field label="Nombre del atributo">
-                    <Input value={atributoForm.nombre} onChange={updateAtributoForm('nombre')} required />
+                    <Input id="atributo-nombre-input" value={atributoForm.nombre} onChange={updateAtributoForm('nombre')} required />
                   </Field>
                   <Field label="Tipo">
                     <Select value={atributoForm.tipo} onChange={updateAtributoForm('tipo')}>
@@ -387,9 +412,16 @@ export function ServicioForm() {
                 )}
 
                 {atributoError && <p className={formStyles.error}>{atributoError}</p>}
-                <Button type="submit" disabled={atributoSubmitting}>
-                  Agregar atributo
-                </Button>
+                <div className={formStyles.addButtonRow}>
+                  <Button type="submit" className={formStyles.addButton} disabled={atributoSubmitting}>
+                    <PlusCircle size={18} /> {atributoSubmitting ? 'Agregando…' : 'Agregar atributo a la categoría'}
+                  </Button>
+                  {atributoJustAdded && (
+                    <span className={formStyles.addedConfirm}>
+                      <CheckCircle2 size={16} /> Atributo agregado
+                    </span>
+                  )}
+                </div>
               </form>
             </>
           )}

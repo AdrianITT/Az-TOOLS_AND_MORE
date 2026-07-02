@@ -62,3 +62,16 @@
 .shareOption:hover {
   background: var(--color-bg);
 }
+
+.rowJustAdded td {
+  animation: rowFadeIn 1.8s ease;
+}
+
+@keyframes rowFadeIn {
+  0% {
+    background-color: #d9f7e3;
+  }
+  100% {
+    background-color: transparent;
+  }
+}

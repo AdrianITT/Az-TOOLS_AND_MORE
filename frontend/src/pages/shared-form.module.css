@@ -27,3 +27,101 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* --- "Draft" pattern: forms that add an item to a list on submit --- */
+
+.draftCard {
+  border: 1.5px dashed var(--color-primary);
+  background: #eef7ff;
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.draftHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.draftTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.draftHint {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  margin: -6px 0 0;
+}
+
+.pendingBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #92650a;
+  background: #fdf1d6;
+  border: 1px solid #f3d99a;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  animation: pulseBadge 1.6s ease-in-out infinite;
+}
+
+@keyframes pulseBadge {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.addButtonRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.addButton {
+  padding: 12px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.addedConfirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-success);
+  font-size: 14px;
+  font-weight: 600;
+  animation: fadeOutConfirm 2.2s ease forwards;
+}
+
+@keyframes fadeOutConfirm {
+  0% {
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}

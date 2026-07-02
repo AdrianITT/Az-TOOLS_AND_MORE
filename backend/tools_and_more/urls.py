@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/', include('cotizador_project.urls')),
     path('api/finanzas/', include('finanzas_app.urls')),
     path('api/qr/', include('qr_app.urls')),
+    path('api/fibras/', include('fibras_app.urls')),
 ]
 
 if settings.DEBUG:

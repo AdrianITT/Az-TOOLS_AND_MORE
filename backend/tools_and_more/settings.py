@@ -12,8 +12,24 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 
+import environ
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Configuración operativa del módulo de FIBRAs (no requiere API key: los
+# endpoints de Yahoo Finance usados son públicos). No hay .env para el resto
+# del proyecto todavía; este scope se mantiene acotado a lo nuevo.
+env = environ.Env(
+    FIBRAS_SYNC_SLEEP_SECONDS=(float, 1.0),
+    FIBRAS_HISTORIAL_LOOKBACK_YEARS=(int, 10),
+    FIBRAS_STALE_DATA_DAYS=(int, 3),
+)
+environ.Env.read_env(BASE_DIR / '.env')
+
+FIBRAS_SYNC_SLEEP_SECONDS = env('FIBRAS_SYNC_SLEEP_SECONDS')
+FIBRAS_HISTORIAL_LOOKBACK_YEARS = env('FIBRAS_HISTORIAL_LOOKBACK_YEARS')
+FIBRAS_STALE_DATA_DAYS = env('FIBRAS_STALE_DATA_DAYS')
 
 
 # Quick-start development settings - unsuitable for production
@@ -44,6 +60,7 @@ INSTALLED_APPS = [
     'cotizador_project',
     'finanzas_app',
     'qr_app',
+    'fibras_app',
 ]
 
 MIDDLEWARE = [

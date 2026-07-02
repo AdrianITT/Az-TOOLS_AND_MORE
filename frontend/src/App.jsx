@@ -18,6 +18,10 @@ import { Cotizaciones } from './pages/Cotizaciones/Cotizaciones'
 import { CotizacionForm } from './pages/Cotizaciones/CotizacionForm'
 import { Usuarios } from './pages/Usuarios/Usuarios'
 import { Finanzas } from './pages/Finanzas/Finanzas'
+import { FibrasCatalogo } from './pages/Fibras/FibrasCatalogo'
+import { FibraDetalle } from './pages/Fibras/FibraDetalle'
+import { SimulacionForm } from './pages/Fibras/SimulacionForm'
+import { Historial as HistorialFibras } from './pages/Fibras/Historial'
 import { QR } from './pages/QR/QR'
 
 function App() {
@@ -46,6 +50,10 @@ function App() {
             <Route path="/cotizaciones/nueva" element={<CotizacionForm />} />
             <Route path="/cotizaciones/:id" element={<CotizacionForm />} />
             <Route path="/finanzas" element={<Finanzas />} />
+            <Route path="/finanzas/fibras" element={<FibrasCatalogo />} />
+            <Route path="/finanzas/fibras/simular" element={<SimulacionForm />} />
+            <Route path="/finanzas/fibras/historial" element={<HistorialFibras />} />
+            <Route path="/finanzas/fibras/:ticker" element={<FibraDetalle />} />
             <Route path="/qr" element={<QR />} />
             <Route path="/usuarios" element={<Usuarios />} />
           </Route>

@@ -1,6 +1,6 @@
 import styles from './Table.module.css'
 
-export function Table({ columns, rows, rowKey, emptyMessage = 'Sin registros' }) {
+export function Table({ columns, rows, rowKey, emptyMessage = 'Sin registros', rowClassName }) {
   if (!rows.length) {
     return <p className={styles.empty}>{emptyMessage}</p>
   }
@@ -17,7 +17,7 @@ export function Table({ columns, rows, rowKey, emptyMessage = 'Sin registros' })
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)}>
+            <tr key={rowKey(row)} className={rowClassName ? rowClassName(row) : undefined}>
               {columns.map((col) => (
                 <td key={col.key}>{col.render ? col.render(row) : row[col.key]}</td>
               ))}

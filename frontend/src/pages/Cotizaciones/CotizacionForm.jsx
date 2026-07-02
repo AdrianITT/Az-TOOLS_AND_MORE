@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Share2, MessageCircle, Mail } from 'lucide-react'
+import { Share2, MessageCircle, Mail, PlusCircle, CheckCircle2, Circle } from 'lucide-react'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -86,6 +86,8 @@ export function CotizacionForm() {
   const [itemForm, setItemForm] = useState(emptyItemForm)
   const [itemError, setItemError] = useState('')
   const [itemSubmitting, setItemSubmitting] = useState(false)
+  const [highlightItemId, setHighlightItemId] = useState(null)
+  const [itemJustAdded, setItemJustAdded] = useState(false)
 
   const [editingItemId, setEditingItemId] = useState(null)
   const [editItemForm, setEditItemForm] = useState({ cantidad: '', precio_unitario: '' })
@@ -94,6 +96,7 @@ export function CotizacionForm() {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const itemSubtotal = (Number(itemForm.cantidad) || 0) * (Number(itemForm.precio_unitario) || 0)
+  const isItemPending = Boolean(itemForm.servicio)
 
   useEffect(() => {
     api.get('/clientes/').then((data) => setClientes(data.results ?? data))
@@ -213,7 +216,7 @@ export function CotizacionForm() {
     setItemError('')
     setItemSubmitting(true)
     try {
-      await api.post('/items/', {
+      const created = await api.post('/items/', {
         cotizacion: id,
         servicio: itemForm.servicio,
         cantidad: itemForm.cantidad,
@@ -222,6 +225,11 @@ export function CotizacionForm() {
       setItemForm(emptyItemForm)
       await refreshCotizacion()
       flashSuccess('Servicio agregado')
+      setItemJustAdded(true)
+      setHighlightItemId(created.id)
+      setTimeout(() => setItemJustAdded(false), 2200)
+      setTimeout(() => setHighlightItemId(null), 1800)
+      document.getElementById('item-servicio-select')?.focus()
     } catch (err) {
       setItemError(getErrorMessage(err, 'No se pudo agregar el item'))
     } finally {
@@ -394,6 +402,7 @@ export function CotizacionForm() {
           ) : (
             <Table
               rowKey={(i) => i.id}
+              rowClassName={(i) => (i.id === highlightItemId ? styles.rowJustAdded : undefined)}
               emptyMessage="Esta cotización todavía no tiene items"
               columns={[
                 { key: 'servicio', header: 'Servicio', render: (i) => serviciosById[i.servicio]?.nombre ?? i.servicio },
@@ -456,10 +465,25 @@ export function CotizacionForm() {
             />
           )}
 
-          <form className={formStyles.form} onSubmit={handleAddItem}>
+          <form className={`${formStyles.form} ${formStyles.draftCard}`} onSubmit={handleAddItem}>
+            <div className={formStyles.draftHeader}>
+              <p className={formStyles.draftTitle}>
+                <PlusCircle size={18} /> Nuevo servicio para esta cotización
+              </p>
+              {isItemPending && (
+                <span className={formStyles.pendingBadge}>
+                  <Circle size={8} fill="currentColor" /> Sin agregar todavía
+                </span>
+              )}
+            </div>
+            <p className={formStyles.draftHint}>
+              Completá los datos y presioná "Agregar servicio a la cotización" para sumarlo. Mientras no lo hagas, no queda
+              guardado.
+            </p>
+
             <div className={formStyles.row}>
               <Field label="Servicio">
-                <Select value={itemForm.servicio} onChange={updateItemForm('servicio')} required>
+                <Select id="item-servicio-select" value={itemForm.servicio} onChange={updateItemForm('servicio')} required>
                   <option value="">Seleccionar…</option>
                   {servicios.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -487,9 +511,16 @@ export function CotizacionForm() {
               </p>
             )}
             {itemError && <p className={formStyles.error}>{itemError}</p>}
-            <Button type="submit" disabled={itemSubmitting}>
-              Agregar servicio
-            </Button>
+            <div className={formStyles.addButtonRow}>
+              <Button type="submit" className={formStyles.addButton} disabled={itemSubmitting}>
+                <PlusCircle size={18} /> {itemSubmitting ? 'Agregando…' : 'Agregar servicio a la cotización'}
+              </Button>
+              {itemJustAdded && (
+                <span className={formStyles.addedConfirm}>
+                  <CheckCircle2 size={16} /> Servicio agregado
+                </span>
+              )}
+            </div>
           </form>
         </Card>
       )}
