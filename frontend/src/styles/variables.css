@@ -9,6 +9,9 @@
   --color-danger: #e74c3c;
   --color-success: #2ecc71;
 
+  --sidebar-bg: var(--color-surface);
+  --sidebar-text: var(--color-text-muted);
+
   --radius: 8px;
   --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
 

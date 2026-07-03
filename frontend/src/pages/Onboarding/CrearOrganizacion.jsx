@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../../api/client'
+import { api, getErrorMessage } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { Card } from '../../components/ui/Card'
 import { Field, Input, Select } from '../../components/ui/Input'
@@ -47,7 +47,7 @@ export function CrearOrganizacion() {
       setUserData(data.user)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err.data?.detail || 'No se pudo crear la organización. Revisá los datos.')
+      setError(getErrorMessage(err, 'No se pudo crear la organización. Revisá los datos.'))
     } finally {
       setLoading(false)
     }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { api } from '../../api/client'
+import { api, getErrorMessage } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { Card } from '../../components/ui/Card'
 import { Field, Input } from '../../components/ui/Input'
@@ -29,7 +29,7 @@ export function AceptarInvitacion() {
       setUserData(data.user)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err.data?.token?.[0] || err.data?.detail || 'No se pudo aceptar la invitación')
+      setError(getErrorMessage(err, 'No se pudo aceptar la invitación'))
     } finally {
       setLoading(false)
     }

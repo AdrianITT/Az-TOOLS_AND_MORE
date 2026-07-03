@@ -7,12 +7,13 @@ from django.http import FileResponse
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .mixins import OrganizationFilterMixin
-from .models import AtributoPlantilla, Cliente, Cotizacion, CotizacionDetalle, Invitacion, Servicio, User
+from .models import AtributoPlantilla, Cliente, Cotizacion, CotizacionDetalle, Invitacion, Servicio, Sucursal, User
 from .pdf import generar_pdf_cotizacion, enviar_pdf_por_email
 from .permissions import (
     HasRolPermission,
@@ -28,8 +29,10 @@ from .serializers import (
     CotizacionDetalleSerializer,
     CotizacionSerializer,
     InvitacionSerializer,
+    OrganizationSerializer,
     RegistroOrganizacionSerializer,
     ServicioSerializer,
+    SucursalSerializer,
     UserSerializer,
 )
 
@@ -53,6 +56,17 @@ class ClienteViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         if not self.request.user.organization.puede_crear_clientes():
             raise ValidationError('Has alcanzado el límite de clientes de tu plan')
         super().perform_create(serializer)
+
+
+class SucursalViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
+    """Sucursales de la organización actual (dirección, contacto y tema propios)."""
+
+    queryset = Sucursal.objects.all()
+    serializer_class = SucursalSerializer
+    permission_classes = [IsAuthenticated, PuedeGestionarUsuarios]
+    filterset_fields = ['activo']
+    search_fields = ['nombre']
+    ordering = ['nombre']
 
 
 class ServicioViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
@@ -123,6 +137,12 @@ class CotizacionViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
             organization=self.request.user.organization,
             usuario_creador=self.request.user,
         )
+
+    def perform_update(self, serializer):
+        cotizacion = serializer.save()
+        # Si cambió el % de IVA, recalcular impuesto/total con la nueva tasa.
+        if 'iva_porcentaje' in serializer.validated_data:
+            cotizacion.calcular_totales()
 
     @action(detail=True, methods=['post'])
     def cambiar_estado(self, request, pk=None):
@@ -275,6 +295,31 @@ class AceptarInvitacionView(APIView):
             },
             status=201,
         )
+
+
+class OrganizacionActualView(APIView):
+    """Datos (incluido el logo) de la organización del usuario autenticado."""
+
+    permission_classes = [IsAuthenticated, PuedeGestionarUsuarios]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get(self, request):
+        return Response(
+            OrganizationSerializer(request.user.organization, context={'request': request}).data
+        )
+
+    def patch(self, request):
+        organization = request.user.organization
+        data = request.data
+        remove_logo = str(data.get('remove_logo', '')).lower() in ('1', 'true')
+        serializer = OrganizationSerializer(
+            organization, data=data, partial=True, context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if remove_logo and organization.logo:
+            organization.logo.delete(save=True)
+        return Response(OrganizationSerializer(organization, context={'request': request}).data)
 
 
 class MeView(APIView):

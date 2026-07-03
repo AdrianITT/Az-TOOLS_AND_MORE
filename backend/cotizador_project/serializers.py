@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -13,20 +15,62 @@ from .models import (
     Organization,
     Servicio,
     ServicioValor,
+    Sucursal,
     User,
     validar_valor_atributo,
 )
+
+
+HEX_COLOR_RE = re.compile(r'^#[0-9A-Fa-f]{6}$')
+
+COLOR_FIELDS = [
+    'color_primario', 'color_fondo', 'color_superficie',
+    'color_texto', 'color_menu_fondo', 'color_menu_texto',
+]
+
+
+def validate_color_fields(attrs):
+    for field in COLOR_FIELDS:
+        value = attrs.get(field)
+        if value and not HEX_COLOR_RE.match(value):
+            raise serializers.ValidationError({field: 'Debe ser un color hexadecimal válido, por ejemplo #3498db.'})
+    return attrs
 
 
 class OrganizationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Organization
         fields = [
-            'id', 'nombre', 'ruc', 'email', 'telefono', 'sitio_web',
-            'direccion', 'ciudad', 'pais', 'plan', 'activo',
-            'fecha_registro', 'logo', 'color_primario',
+            'id', 'nombre', 'nombre_comercial', 'descripcion', 'ruc', 'giro',
+            'razon_social', 'regimen_fiscal', 'uso_cfdi_default',
+            'email', 'telefono', 'whatsapp', 'sitio_web',
+            'direccion', 'calle', 'numero_exterior', 'colonia', 'ciudad',
+            'estado', 'pais', 'codigo_postal',
+            'facebook', 'instagram', 'twitter', 'linkedin',
+            'plan', 'activo', 'fecha_registro', 'logo',
+            'color_primario', 'color_fondo', 'color_superficie',
+            'color_texto', 'color_menu_fondo', 'color_menu_texto',
         ]
         read_only_fields = ['id', 'fecha_registro']
+
+    def validate(self, attrs):
+        return validate_color_fields(attrs)
+
+
+class SucursalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Sucursal
+        fields = [
+            'id', 'organization', 'nombre', 'activo', 'email', 'telefono',
+            'calle', 'numero_exterior', 'colonia', 'ciudad', 'estado', 'pais', 'codigo_postal',
+            'color_primario', 'color_fondo', 'color_superficie',
+            'color_texto', 'color_menu_fondo', 'color_menu_texto',
+            'creado', 'actualizado',
+        ]
+        read_only_fields = ['id', 'organization', 'creado', 'actualizado']
+
+    def validate(self, attrs):
+        return validate_color_fields(attrs)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -173,12 +217,13 @@ class CotizacionDetalleSerializer(serializers.ModelSerializer):
 
 class CotizacionSerializer(serializers.ModelSerializer):
     items = CotizacionDetalleSerializer(many=True, read_only=True)
+    iva_porcentaje = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0)
 
     class Meta:
         model = Cotizacion
         fields = [
             'id', 'organization', 'cliente', 'usuario_creador', 'numero',
-            'descripcion', 'estado', 'subtotal', 'impuesto', 'total',
+            'descripcion', 'estado', 'subtotal', 'iva_porcentaje', 'impuesto', 'total',
             'fecha_vencimiento', 'creado', 'actualizado', 'items',
         ]
         read_only_fields = [

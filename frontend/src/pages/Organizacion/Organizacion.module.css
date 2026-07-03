@@ -1,0 +1,154 @@
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.logoPreview {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+.logoPreview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hint {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.tab {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.logoDrop {
+  border: 1.5px dashed var(--color-border);
+  border-radius: var(--radius);
+  padding: 16px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.logoDropActive {
+  border-color: var(--color-primary);
+  background: var(--color-bg);
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.themePreview {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--preview-bg, #f5f6f8);
+}
+
+.previewSidebar {
+  width: 140px;
+  flex-shrink: 0;
+  background: var(--preview-menu-bg, #fff);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.previewBrand {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--preview-menu-text, #6b7280);
+  margin-bottom: 4px;
+}
+
+.previewLink {
+  font-size: 13px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--preview-menu-text, #6b7280);
+}
+
+.previewLinkActive {
+  background: var(--preview-primary, #3498db);
+  color: #fff;
+}
+
+.previewBody {
+  flex: 1;
+  padding: 16px;
+}
+
+.previewCard {
+  background: var(--preview-surface, #fff);
+  color: var(--preview-text, #1f2430);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-size: 13px;
+}
+
+.previewButton {
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--preview-primary, #3498db);
+  color: #fff;
+  font-weight: 600;
+  cursor: default;
+}
+
+.addButtonRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}

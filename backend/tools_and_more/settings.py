@@ -17,10 +17,15 @@ import environ
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Configuración operativa del módulo de FIBRAs (no requiere API key: los
-# endpoints de Yahoo Finance usados son públicos). No hay .env para el resto
-# del proyecto todavía; este scope se mantiene acotado a lo nuevo.
+# Todos los settings sensibles/por entorno se leen de variables de entorno
+# (ver .env.example). Los defaults abajo mantienen el comportamiento de
+# desarrollo local de siempre cuando no hay .env o faltan variables.
 env = environ.Env(
+    SECRET_KEY=(str, 'django-insecure-)$5u0j#^h6+o_w0#7_gaw2%_8o!zax1sj1l2#r)vp^829cbk)='),
+    DEBUG=(bool, True),
+    ALLOWED_HOSTS=(list, []),
+    CORS_ALLOWED_ORIGINS=(list, ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173']),
+    FRONTEND_URL=(str, 'http://localhost:5173'),
     FIBRAS_SYNC_SLEEP_SECONDS=(float, 1.0),
     FIBRAS_HISTORIAL_LOOKBACK_YEARS=(int, 10),
     FIBRAS_STALE_DATA_DAYS=(int, 3),
@@ -36,12 +41,13 @@ FIBRAS_STALE_DATA_DAYS = env('FIBRAS_STALE_DATA_DAYS')
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-)$5u0j#^h6+o_w0#7_gaw2%_8o!zax1sj1l2#r)vp^829cbk)='
+# En Docker/producción, definir SECRET_KEY vía variable de entorno (ver .env.example).
+SECRET_KEY = env('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = env('ALLOWED_HOSTS')
 
 
 # Application definition
@@ -61,10 +67,12 @@ INSTALLED_APPS = [
     'finanzas_app',
     'qr_app',
     'fibras_app',
+    'pdf_tools_app',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -75,11 +83,7 @@ MIDDLEWARE = [
     'cotizador_project.middleware.OrganizationMiddleware',
 ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:5173",
-    ]
+CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS')
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
@@ -119,13 +123,19 @@ WSGI_APPLICATION = 'tools_and_more.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+#
+# Si DATABASE_URL está definida en el entorno (p.ej. dentro de Docker,
+# apuntando a Postgres) se usa esa. Si no, se mantiene SQLite para que el
+# desarrollo local siga funcionando sin configuración adicional.
+if env('DATABASE_URL', default=None):
+    DATABASES = {'default': env.db('DATABASE_URL')}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
 
 
 # Password validation
@@ -158,6 +168,11 @@ USE_TZ = True
 # Static files
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STORAGES = {
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Media files (logos de organizaciones, etc.)
 MEDIA_URL = '/media/'
@@ -173,6 +188,6 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 DEFAULT_FROM_EMAIL = 'noreply@aztools.local'
 
 # URL del frontend usada para construir links (p.ej. aceptar invitación)
-FRONTEND_URL = 'http://localhost:5173'
+FRONTEND_URL = env('FRONTEND_URL')
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { PlusCircle, CheckCircle2, Circle } from 'lucide-react'
+import { PlusCircle, CheckCircle2, Circle, PenLine } from 'lucide-react'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -244,6 +244,12 @@ export function ServicioForm() {
 
       <Card style={{ marginBottom: 20 }}>
         <form className={formStyles.form} onSubmit={handleSubmit}>
+          {isDirty && (
+            <span className={formStyles.pendingBadge}>
+              <PenLine size={12} /> Cambios sin guardar
+            </span>
+          )}
+
           <div className={formStyles.row}>
             <Field label="Nombre">
               <Input value={form.nombre} onChange={update('nombre')} required />
@@ -306,8 +312,8 @@ export function ServicioForm() {
             </Card>
           )}
 
-          <Button type="submit" disabled={submitting}>
-            Guardar
+          <Button type="submit" disabled={submitting || (isEditing && !isDirty)}>
+            {submitting ? 'Guardando…' : 'Guardar'}
           </Button>
         </form>
       </Card>

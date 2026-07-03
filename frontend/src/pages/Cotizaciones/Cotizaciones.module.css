@@ -24,6 +24,19 @@
   margin: 4px 0 12px;
 }
 
+.totalsSummary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.totalsSummary strong {
+  color: var(--color-text);
+  font-size: 16px;
+}
+
 .shareMenu {
   position: relative;
   display: inline-block;

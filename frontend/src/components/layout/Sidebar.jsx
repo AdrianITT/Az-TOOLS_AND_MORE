@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog, TrendingUp, FileStack, Building2, MapPin } from 'lucide-react'
 import { useAuth } from '../../auth/AuthContext'
 import styles from './Sidebar.module.css'
 
@@ -25,11 +25,18 @@ const NAV_GROUPS = [
   },
   {
     label: 'Herramientas',
-    items: [{ to: '/qr', label: 'Códigos QR', icon: QrCode }],
+    items: [
+      { to: '/qr', label: 'Códigos QR', icon: QrCode },
+      { to: '/pdf-tools', label: 'Herramientas PDF', icon: FileStack },
+    ],
   },
   {
     label: 'Administración',
-    items: [{ to: '/usuarios', label: 'Usuarios', icon: UserCog, permiso: 'puede_gestionar_usuarios' }],
+    items: [
+      { to: '/usuarios', label: 'Usuarios', icon: UserCog, permiso: 'puede_gestionar_usuarios' },
+      { to: '/organizacion', label: 'Mi organización', icon: Building2, permiso: 'puede_gestionar_usuarios' },
+      { to: '/sucursales', label: 'Sucursales', icon: MapPin, permiso: 'puede_gestionar_usuarios' },
+    ],
   },
 ]
 

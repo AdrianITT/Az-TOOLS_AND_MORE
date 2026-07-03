@@ -1,4 +1,8 @@
+import { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
+import { api } from './api/client'
+import { useAuth } from './auth/AuthContext'
+import { applyOrgTheme } from './utils/theme'
 import {
   ProtectedRoute,
   RequireOrg,
@@ -23,8 +27,24 @@ import { FibraDetalle } from './pages/Fibras/FibraDetalle'
 import { SimulacionForm } from './pages/Fibras/SimulacionForm'
 import { Historial as HistorialFibras } from './pages/Fibras/Historial'
 import { QR } from './pages/QR/QR'
+import { PDFTools } from './pages/PDFTools/PDFTools'
+import { ImagesToPDF } from './pages/PDFTools/ImagesToPDF/ImagesToPDF'
+import { MergePDF } from './pages/PDFTools/MergePDF/MergePDF'
+import { WordToPDF } from './pages/PDFTools/WordToPDF/WordToPDF'
+import { SplitPDF } from './pages/PDFTools/SplitPDF/SplitPDF'
+import { PdfToImages } from './pages/PDFTools/PdfToImages/PdfToImages'
+import { EditPages } from './pages/PDFTools/EditPages/EditPages'
+import { Organizacion } from './pages/Organizacion/Organizacion'
+import { Sucursales } from './pages/Sucursales/Sucursales'
 
 function App() {
+  const { hasOrganization } = useAuth()
+
+  useEffect(() => {
+    if (!hasOrganization) return
+    api.get('/organizacion/').then(applyOrgTheme).catch(() => {})
+  }, [hasOrganization])
+
   return (
     <Routes>
       <Route element={<RedirectIfAuthenticated />}>
@@ -55,7 +75,16 @@ function App() {
             <Route path="/finanzas/fibras/historial" element={<HistorialFibras />} />
             <Route path="/finanzas/fibras/:ticker" element={<FibraDetalle />} />
             <Route path="/qr" element={<QR />} />
+            <Route path="/pdf-tools" element={<PDFTools />} />
+            <Route path="/pdf-tools/imagenes-a-pdf" element={<ImagesToPDF />} />
+            <Route path="/pdf-tools/unir-pdf" element={<MergePDF />} />
+            <Route path="/pdf-tools/word-a-pdf" element={<WordToPDF />} />
+            <Route path="/pdf-tools/dividir-pdf" element={<SplitPDF />} />
+            <Route path="/pdf-tools/pdf-a-imagenes" element={<PdfToImages />} />
+            <Route path="/pdf-tools/editar-paginas" element={<EditPages />} />
             <Route path="/usuarios" element={<Usuarios />} />
+            <Route path="/organizacion" element={<Organizacion />} />
+            <Route path="/sucursales" element={<Sucursales />} />
           </Route>
         </Route>
       </Route>

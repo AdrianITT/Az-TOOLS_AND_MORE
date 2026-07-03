@@ -25,7 +25,10 @@ urlpatterns = [
     path('api/finanzas/', include('finanzas_app.urls')),
     path('api/qr/', include('qr_app.urls')),
     path('api/fibras/', include('fibras_app.urls')),
+    path('api/pdf/', include('pdf_tools_app.urls')),
 ]
 
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# Media (logos subidos, etc.) se sirve siempre desde Django: este despliegue
+# autohospedado no usa almacenamiento de objetos externo (S3/etc.), así que
+# no basta con gatear esto por DEBUG como hace el helper por defecto.
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

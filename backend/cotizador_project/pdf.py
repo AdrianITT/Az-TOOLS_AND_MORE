@@ -380,6 +380,8 @@ def generar_pdf_cotizacion(cotizacion):
         else ''
     )
 
+    iva_porcentaje_str = f'{cotizacion.iva_porcentaje:g}'
+
     html_content += f"""
             </tbody>
         </table>
@@ -390,7 +392,7 @@ def generar_pdf_cotizacion(cotizacion):
                 <span class="amount">${float(cotizacion.subtotal):.2f}</span>
             </div>
             <div class="totals-row">
-                <span class="label">IVA (16%)</span>
+                <span class="label">IVA ({iva_porcentaje_str}%)</span>
                 <span class="amount">${float(cotizacion.impuesto):.2f}</span>
             </div>
             <div class="totals-row grand-total">
@@ -402,7 +404,7 @@ def generar_pdf_cotizacion(cotizacion):
         <div class="terms">
             <h3>Términos y condiciones</h3>
             <p>Cotización válida hasta el {cotizacion.fecha_vencimiento.strftime('%d/%m/%Y')}.</p>
-            <p>Los precios incluyen IVA (16%).</p>
+            <p>Los precios incluyen IVA ({iva_porcentaje_str}%).</p>
         </div>
         {descripcion_html}
 

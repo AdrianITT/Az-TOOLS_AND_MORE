@@ -32,16 +32,67 @@ class Organization(models.Model):
         'empresa': 999999,
     }
 
+    REGIMEN_FISCAL_CHOICES = [
+        ('601', '601 - General de Ley Personas Morales'),
+        ('603', '603 - Personas Morales con Fines no Lucrativos'),
+        ('605', '605 - Sueldos y Salarios e Ingresos Asimilados a Salarios'),
+        ('606', '606 - Arrendamiento'),
+        ('608', '608 - Demás ingresos'),
+        ('610', '610 - Residentes en el Extranjero sin Establecimiento Permanente en México'),
+        ('612', '612 - Personas Físicas con Actividades Empresariales y Profesionales'),
+        ('614', '614 - Ingresos por intereses'),
+        ('616', '616 - Sin obligaciones fiscales'),
+        ('621', '621 - Incorporación Fiscal'),
+        ('622', '622 - Actividades Agrícolas, Ganaderas, Silvícolas y Pesqueras'),
+        ('625', '625 - Régimen de las Actividades Empresariales con ingresos a través de Plataformas Tecnológicas'),
+        ('626', '626 - Régimen Simplificado de Confianza'),
+    ]
+
+    USO_CFDI_CHOICES = [
+        ('G01', 'G01 - Adquisición de mercancías'),
+        ('G02', 'G02 - Devoluciones, descuentos o bonificaciones'),
+        ('G03', 'G03 - Gastos en general'),
+        ('I01', 'I01 - Construcciones'),
+        ('I04', 'I04 - Equipo de cómputo y accesorios'),
+        ('I08', 'I08 - Otra maquinaria y equipo'),
+        ('D01', 'D01 - Honorarios médicos, dentales y gastos hospitalarios'),
+        ('D10', 'D10 - Pagos por servicios educativos (colegiaturas)'),
+        ('P01', 'P01 - Por definir'),
+        ('S01', 'S01 - Sin efectos fiscales'),
+        ('CP01', 'CP01 - Pagos'),
+    ]
+
     nombre = models.CharField(max_length=200, unique=True)
+    nombre_comercial = models.CharField(max_length=200, blank=True, null=True)
+    descripcion = models.TextField(blank=True, null=True)
     ruc = models.CharField(max_length=50, blank=True, null=True)
+    giro = models.CharField(max_length=150, blank=True, null=True)
     email = models.EmailField()
+
+    # Datos de facturación (CFDI)
+    regimen_fiscal = models.CharField(max_length=10, choices=REGIMEN_FISCAL_CHOICES, blank=True, null=True)
+    uso_cfdi_default = models.CharField(max_length=10, choices=USO_CFDI_CHOICES, blank=True, null=True)
+    razon_social = models.CharField(max_length=200, blank=True, null=True)
+
     telefono = models.CharField(max_length=20, blank=True, null=True)
+    whatsapp = models.CharField(max_length=20, blank=True, null=True)
     sitio_web = models.URLField(blank=True, null=True)
 
-    # Datos legales
+    # Dirección
     direccion = models.TextField(blank=True, null=True)
+    calle = models.CharField(max_length=200, blank=True, null=True)
+    numero_exterior = models.CharField(max_length=20, blank=True, null=True)
+    colonia = models.CharField(max_length=150, blank=True, null=True)
     ciudad = models.CharField(max_length=100, blank=True, null=True)
+    estado = models.CharField(max_length=100, blank=True, null=True)
     pais = models.CharField(max_length=100, default='Mexico')
+    codigo_postal = models.CharField(max_length=10, blank=True, null=True)
+
+    # Redes sociales
+    facebook = models.URLField(blank=True, null=True)
+    instagram = models.URLField(blank=True, null=True)
+    twitter = models.URLField(blank=True, null=True)
+    linkedin = models.URLField(blank=True, null=True)
 
     # Suscripción
     plan = models.CharField(max_length=20, choices=PLAN_CHOICES, default='basico')
@@ -51,6 +102,11 @@ class Organization(models.Model):
     # Logo/branding
     logo = models.ImageField(upload_to='logos/', blank=True, null=True)
     color_primario = models.CharField(max_length=7, default='#3498db')
+    color_fondo = models.CharField(max_length=7, blank=True, null=True)
+    color_superficie = models.CharField(max_length=7, blank=True, null=True)
+    color_texto = models.CharField(max_length=7, blank=True, null=True)
+    color_menu_fondo = models.CharField(max_length=7, blank=True, null=True)
+    color_menu_texto = models.CharField(max_length=7, blank=True, null=True)
 
     class Meta:
         verbose_name = 'Organización'
@@ -69,6 +125,58 @@ class Organization(models.Model):
         """Determina límites de clientes según plan"""
         limite = self.PLAN_LIMITES_CLIENTES[self.plan]
         return self.clientes.filter(activo=True).count() < limite
+
+
+class Sucursal(models.Model):
+    """
+    Sucursal/sede adicional de una Organización, con su propia dirección,
+    contacto y, opcionalmente, su propio tema de colores. Los campos de color
+    en blanco heredan la paleta de la Organización.
+    """
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='sucursales',
+    )
+
+    nombre = models.CharField(max_length=200)
+    activo = models.BooleanField(default=True)
+
+    # Contacto
+    email = models.EmailField(blank=True, null=True)
+    telefono = models.CharField(max_length=20, blank=True, null=True)
+
+    # Dirección
+    calle = models.CharField(max_length=200, blank=True, null=True)
+    numero_exterior = models.CharField(max_length=20, blank=True, null=True)
+    colonia = models.CharField(max_length=150, blank=True, null=True)
+    ciudad = models.CharField(max_length=100, blank=True, null=True)
+    estado = models.CharField(max_length=100, blank=True, null=True)
+    pais = models.CharField(max_length=100, blank=True, null=True)
+    codigo_postal = models.CharField(max_length=10, blank=True, null=True)
+
+    # Tema de colores propio (opcional, hereda de Organization si está en blanco)
+    color_primario = models.CharField(max_length=7, blank=True, null=True)
+    color_fondo = models.CharField(max_length=7, blank=True, null=True)
+    color_superficie = models.CharField(max_length=7, blank=True, null=True)
+    color_texto = models.CharField(max_length=7, blank=True, null=True)
+    color_menu_fondo = models.CharField(max_length=7, blank=True, null=True)
+    color_menu_texto = models.CharField(max_length=7, blank=True, null=True)
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Sucursal'
+        verbose_name_plural = 'Sucursales'
+        ordering = ['nombre']
+        constraints = [
+            models.UniqueConstraint(fields=['organization', 'nombre'], name='unique_sucursal_nombre_por_org'),
+        ]
+
+    def __str__(self):
+        return f"{self.nombre} ({self.organization.nombre})"
 
 
 class User(AbstractUser):
@@ -401,6 +509,7 @@ class Cotizacion(models.Model):
 
     # Montos
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    iva_porcentaje = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('16.00'))
     impuesto = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
@@ -425,7 +534,7 @@ class Cotizacion(models.Model):
         """Recalcula montos según items"""
         items = self.items.all()
         self.subtotal = sum((item.calcular_subtotal() for item in items), Decimal('0'))
-        self.impuesto = self.subtotal * Decimal('0.16')
+        self.impuesto = self.subtotal * (self.iva_porcentaje / Decimal('100'))
         self.total = self.subtotal + self.impuesto
         self.save()
 

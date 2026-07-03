@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Share2, MessageCircle, Mail, QrCode, Download, PlusCircle, CheckCircle2, Circle } from 'lucide-react'
+import { Share2, MessageCircle, Mail, QrCode, Download, PlusCircle, CheckCircle2, Circle, PenLine } from 'lucide-react'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -20,7 +20,7 @@ const ESTADOS = [
   { value: 'expirada', label: 'Expirada' },
 ]
 
-const emptyForm = { cliente: '', descripcion: '', fecha_vencimiento: '' }
+const emptyForm = { cliente: '', descripcion: '', fecha_vencimiento: '', iva_porcentaje: '16' }
 const emptyItemForm = { servicio: '', cantidad: 1, precio_unitario: '' }
 
 function ShareMenu({ onWhatsApp, onEmail }) {
@@ -125,6 +125,7 @@ export function CotizacionForm() {
           cliente: data.cliente,
           descripcion: data.descripcion ?? '',
           fecha_vencimiento: data.fecha_vencimiento,
+          iva_porcentaje: data.iva_porcentaje,
         }
         setForm(next)
         setInitialForm(next)
@@ -389,6 +390,12 @@ export function CotizacionForm() {
 
       <Card style={{ marginBottom: 20 }}>
         <form className={formStyles.form} onSubmit={handleSubmitInfo}>
+          {isDirty && (
+            <span className={formStyles.pendingBadge}>
+              <PenLine size={12} /> Cambios sin guardar
+            </span>
+          )}
+
           <div className={formStyles.row}>
             <Field label="Cliente">
               <Select value={form.cliente} onChange={update('cliente')} required>
@@ -402,6 +409,16 @@ export function CotizacionForm() {
             </Field>
             <Field label="Fecha de vencimiento">
               <Input type="date" value={form.fecha_vencimiento} onChange={update('fecha_vencimiento')} required />
+            </Field>
+            <Field label="IVA (%)">
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.iva_porcentaje}
+                onChange={update('iva_porcentaje')}
+                required
+              />
             </Field>
           </div>
           <Field label="Descripción / Notas">
@@ -419,7 +436,11 @@ export function CotizacionForm() {
                   ))}
                 </Select>
               </Field>
-              <strong>Total: ${cotizacion.total}</strong>
+              <div className={styles.totalsSummary}>
+                <span>Subtotal: ${cotizacion.subtotal}</span>
+                <span>IVA ({cotizacion.iva_porcentaje}%): ${cotizacion.impuesto}</span>
+                <strong>Total: ${cotizacion.total}</strong>
+              </div>
             </div>
           )}
 

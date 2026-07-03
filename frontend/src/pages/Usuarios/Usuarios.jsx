@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../../api/client'
+import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
 import { Table } from '../../components/ui/Table'
@@ -30,7 +30,9 @@ export function Usuarios() {
     Promise.all([
       api.get('/usuarios/').then((data) => setUsuarios(data.results ?? data)),
       api.get('/invitaciones/', { estado: 'pendiente' }).then((data) => setInvitaciones(data.results ?? data)),
-    ]).finally(() => setLoading(false))
+    ])
+      .catch(() => setError('No se pudieron cargar los usuarios'))
+      .finally(() => setLoading(false))
   }
 
   useEffect(load, [])
@@ -48,13 +50,18 @@ export function Usuarios() {
       setShowForm(false)
       load()
     } catch (err) {
-      setError(err.data?.detail || err.data?.email?.[0] || 'No se pudo enviar la invitación')
+      setError(getErrorMessage(err, 'No se pudo enviar la invitación'))
     }
   }
 
   async function cancelarInvitacion(invitacion) {
-    await api.post(`/invitaciones/${invitacion.id}/cancelar/`)
-    load()
+    setError('')
+    try {
+      await api.post(`/invitaciones/${invitacion.id}/cancelar/`)
+      load()
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudo cancelar la invitación'))
+    }
   }
 
   return (
@@ -63,6 +70,8 @@ export function Usuarios() {
         title="Usuarios"
         action={<Button onClick={() => setShowForm((s) => !s)}>{showForm ? 'Cancelar' : 'Invitar usuario'}</Button>}
       />
+
+      {error && <p className={styles.error}>{error}</p>}
 
       {showForm && (
         <Card style={{ marginBottom: 20 }}>
@@ -81,7 +90,6 @@ export function Usuarios() {
                 </Select>
               </Field>
             </div>
-            {error && <p className={styles.error}>{error}</p>}
             <Button type="submit">Enviar invitación</Button>
           </form>
         </Card>
