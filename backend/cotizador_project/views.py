@@ -1,7 +1,9 @@
+import html
+import logging
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
 from django.db.models import ProtectedError
 from django.http import FileResponse
 from rest_framework import mixins, viewsets
@@ -35,6 +37,8 @@ from .serializers import (
     SucursalSerializer,
     UserSerializer,
 )
+
+logger = logging.getLogger('cotizador_project')
 
 
 class ClienteViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
@@ -256,7 +260,13 @@ class InvitacionViewSet(
             organization=organization,
             invitado_por=self.request.user,
         )
-        self._enviar_email_invitacion(invitacion)
+        # La invitación ya quedó creada (el link es válido) aunque el envío de
+        # correo falle (proveedor caído, dominio de prueba sin verificar,
+        # etc.) — no tiene sentido tirar la petición completa por eso.
+        try:
+            self._enviar_email_invitacion(invitacion)
+        except Exception:
+            logger.exception('No se pudo enviar el email de invitación a %s', invitacion.email)
 
     @action(detail=True, methods=['post'])
     def cancelar(self, request, pk=None):
@@ -267,16 +277,45 @@ class InvitacionViewSet(
 
     def _enviar_email_invitacion(self, invitacion):
         link = f"{settings.FRONTEND_URL}/invitaciones/aceptar/{invitacion.token}"
-        send_mail(
-            subject=f"Invitación a unirte a {invitacion.organization.nombre} en AZ-Tools",
-            message=(
-                f"Has sido invitado como {invitacion.get_rol_display()}.\n"
-                f"Crea tu cuenta con este link: {link}\n"
-                f"Vigente hasta el {invitacion.expira:%Y-%m-%d %H:%M}."
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[invitacion.email],
+        organizacion = html.escape(invitacion.organization.nombre)
+        rol = html.escape(invitacion.get_rol_display())
+        expira = invitacion.expira.strftime('%d/%m/%Y %H:%M')
+        color = invitacion.organization.color_primario or '#3498db'
+        subject = f"Invitación a unirte a {invitacion.organization.nombre} en AZ-Tools"
+
+        text_body = (
+            f"Has sido invitado a unirte a {invitacion.organization.nombre} como {invitacion.get_rol_display()}.\n\n"
+            f"Crea tu cuenta con este link: {link}\n\n"
+            f"Este link vence el {expira}."
         )
+
+        html_body = f"""\
+<div style="font-family: -apple-system, Helvetica, Arial, sans-serif; max-width: 480px; margin: 0 auto; color: #1f2430;">
+  <div style="padding: 32px 24px; text-align: center;">
+    <h1 style="font-size: 18px; margin: 0 0 24px;">{organizacion}</h1>
+    <p style="font-size: 15px; line-height: 1.5; margin: 0 0 24px;">
+      Has sido invitado a unirte como <strong>{rol}</strong>.
+    </p>
+    <a href="{link}"
+       style="display: inline-block; background: {color}; color: #ffffff; text-decoration: none;
+              padding: 12px 28px; border-radius: 6px; font-size: 15px; font-weight: 600;">
+      Crear mi cuenta
+    </a>
+    <p style="font-size: 13px; color: #6b7280; margin: 24px 0 0;">
+      Este link vence el {expira}.
+    </p>
+  </div>
+</div>
+"""
+
+        email = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[invitacion.email],
+        )
+        email.attach_alternative(html_body, 'text/html')
+        email.send()
 
 
 class AceptarInvitacionView(APIView):

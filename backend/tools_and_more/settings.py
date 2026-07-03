@@ -26,6 +26,13 @@ env = environ.Env(
     ALLOWED_HOSTS=(list, []),
     CORS_ALLOWED_ORIGINS=(list, ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173']),
     FRONTEND_URL=(str, 'http://localhost:5173'),
+    EMAIL_BACKEND=(str, 'django.core.mail.backends.console.EmailBackend'),
+    EMAIL_HOST=(str, ''),
+    EMAIL_PORT=(int, 587),
+    EMAIL_HOST_USER=(str, ''),
+    EMAIL_HOST_PASSWORD=(str, ''),
+    EMAIL_USE_TLS=(bool, True),
+    DEFAULT_FROM_EMAIL=(str, 'noreply@aztools.local'),
     FIBRAS_SYNC_SLEEP_SECONDS=(float, 1.0),
     FIBRAS_HISTORIAL_LOOKBACK_YEARS=(int, 10),
     FIBRAS_STALE_DATA_DAYS=(int, 3),
@@ -169,6 +176,9 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
     'staticfiles': {
         'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
     },
@@ -183,9 +193,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'cotizador_project.User'
 
-# Email (invitaciones de usuarios). En desarrollo se imprime en consola.
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-DEFAULT_FROM_EMAIL = 'noreply@aztools.local'
+# Email (invitaciones de usuarios). Por defecto se imprime en consola; para
+# enviar de verdad, definir EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+# y las credenciales SMTP correspondientes en .env (ver .env.example).
+EMAIL_BACKEND = env('EMAIL_BACKEND')
+EMAIL_HOST = env('EMAIL_HOST')
+EMAIL_PORT = env('EMAIL_PORT')
+EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+EMAIL_USE_TLS = env('EMAIL_USE_TLS')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL')
 
 # URL del frontend usada para construir links (p.ej. aceptar invitación)
 FRONTEND_URL = env('FRONTEND_URL')
