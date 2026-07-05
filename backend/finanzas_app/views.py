@@ -350,7 +350,8 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
             pago.gastos_cubiertos.set(gastos_cubiertos)
 
         deuda.saldo_actual = nuevo_saldo
-        if nuevo_saldo == 0 and deuda.categoria.tipo_amortizacion == 'cuotas_fijas':
+        # Revolvente no se cierra automáticamente: su saldo fluctúa con nuevos cargos
+        if nuevo_saldo == 0 and deuda.categoria.tipo_amortizacion in ('cuotas_fijas', 'cuenta_por_pagar'):
             deuda.estado = 'pagada'
         deuda.save()
 
@@ -359,7 +360,7 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='resumen')
     def resumen(self, request):
         org = request.user.organization
-        deudas_activas = Deuda.objects.filter(organization=org, estado='activa')
+        deudas_activas = Deuda.objects.filter(organization=org, estado='activa', saldo_actual__gt=0)
         total = deudas_activas.aggregate(total=Sum('saldo_actual'))['total'] or Decimal('0')
 
         por_categoria = (
@@ -391,6 +392,7 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         deudas = Deuda.objects.filter(
             organization=org,
             estado='activa',
+            saldo_actual__gt=0,
         ).select_related('categoria').filter(
             fecha_vencimiento__isnull=False,
             fecha_vencimiento__lte=limite,

@@ -7,7 +7,8 @@
 - [x] Enhance the visual design of the Service and Quote forms — specifically, make unsaved changes clearly visible. `ServicioForm.jsx` and `CotizacionForm.jsx` now show a "Cambios sin guardar" pill (reusing the existing `pendingBadge` style) whenever `isDirty` is true, and `ServicioForm`'s submit button is now disabled while editing with no changes (matching `CotizacionForm`'s existing behavior). `Organizacion.jsx`'s ad-hoc dirty-hint text was swapped for the same badge so all three main forms share one visual language for "unsaved" state.
 - [x] Improve the workflow for adding services to a quote. — pending-item indicator + highlight-on-add feedback implemented in `CotizacionForm.jsx`.
 - [x] Allow editing client data after creation, since users can make mistakes when entering it. — backend `ClienteViewSet` already supported `PATCH` (gated by the `editar` permission); the gap was the frontend, which only had a create form. Added an "Editar" action per row in `Clientes.jsx` that populates the same form (now including `nombre_personal`, `cedula`, `nombre_empresa`, `ruc`, `direccion`) and submits via `PATCH /clientes/:id/` instead of `POST` when editing.
-- [~] User invitation emails never arrive. Root cause: `EMAIL_BACKEND` defaulted to the console backend (prints instead of sending) — not a bug, just never configured. Fixed two real bugs found along the way: (1) `InvitacionViewSet.perform_create` let a failed `send_mail()` raise all the way up to a `500`, even though the `Invitacion` row (with a valid token) was already committed — now wrapped in `try/except` + logged, so the invite is created regardless of email delivery (`views.py`). (2) Upgraded `_enviar_email_invitacion` from plain text to a proper HTML+text `EmailMultiAlternatives`, styled with the org's `color_primario`, a "Crear mi cuenta" button, and expiration date — done and working, independent of provider. **Blocked on provider choice**: tried Resend (sandbox only delivers to the account's own registered email, unusable for real invites without domain verification — no domain owned yet) and Gmail SMTP with the user's personal address (works, but user doesn't want to send invites *from* their personal Gmail). Options on the table, none picked yet: (a) create a dedicated Gmail account just for this and use its app password, (b) SendGrid Single Sender Verification (no domain needed, verifies any inbox via a confirmation link, 100/day free), (c) buy and verify a domain with Resend (cleanest long-term, costs ~$10-15/yr). Whichever is chosen, only `backend/.env` needs updating — the code (`settings.py` env-driven SMTP config, `views.py` HTML template) already supports any standard SMTP provider.
+- [~] User invitation emails never arrive. Root cause: `EMAIL_BACKEND` defaulted to the console backend (prints instead of sending) — not a bug, just never configured. Fixed two real bugs found along the way: (1) `InvitacionViewSet.perform_create` let a failed `send_mail()` raise all the way up to a `500`, even though the `Invitacion` row (with a valid token) was already committed — now wrapped in `try/except` + logged, so the invite is created regardless of email delivery (`views.py`). (2) Upgraded `_enviar_email_invitacion` from plain text to a proper HTML+text `EmailMultiAlternatives`, styled with the org's `color_primario`, a "Crear mi cuenta" button, and expiration date — done and working, independent of provider. **Blocked on provider choice**: tried Resend (sandbox only delivers to the account's own registered email, unusable for real invites without domain verification — no domain owned yet) and Gmail SMTP with the user's personal address (works, but user doesn't want to send invites *from* their personal Gmail). Options on the table, none picked yet: (a) create a dedicated Gmail account just for this and use its app password, (b) SendGrid Single Sender Verification (no domain needed, verifies any inbox via a confirmation link, 100/day free), (c) buy and verify a domain with Resend (cleanest long-term, costs ~$10-15/yr). Whichever is chosen, only `backend/.env` needs updating — the code (`settings.py` env-driven SMTP config, `views.py` HTML template) already supports any standard SMTP provider. **Workaround shipped**: "Copiar link" button per pending invitation in `Usuarios.jsx` (token exposed read-only in `InvitacionSerializer`), so invites work today by sharing the link manually.
+- [ ] Super admin panel in the frontend for managing organizations (create/list orgs without going through Django admin) — today the only options are the public registration page or `/admin/` proxied through nginx.
 
 ---
 
@@ -79,7 +80,20 @@ New standalone module (`pdf_tools_app` backend + `pages/PDFTools` frontend) for 
 - [x] Word to PDF.
 - [x] Split PDF.
 - [x] PDF to images.
-- [x] Edit pages (inspect + reorder/delete pages).
+- [x] Edit pages (inspect + reorder/delete pages) — upgraded to drag-and-drop reordering with `@dnd-kit`.
+- [x] Legacy `.doc` support in Word to PDF (LibreOffice headless in the backend image).
+- [x] Compress PDF (pypdf `compress_content_streams`).
+- [x] Protect PDF with password / Unlock PDF (pypdf encrypt/decrypt).
+- [x] PDF to Word (`pdf2docx`; rejects image-only PDFs with a clear message — OCR still future work).
+
+### Deudas en Finanzas
+
+Full module implemented per [DeudasFinanzas.md](DeudasFinanzas.md) — third pillar alongside Ingresos/Gastos.
+
+- [x] Models `CategoriaDeuda`/`Deuda`/`PagoDeuda` (M2M optional link to `Gasto`), migration `0002_add_deudas`, 9 default categories seeded on org registration (and backfilled for existing orgs).
+- [x] API: CRUD for categories/debts, `pagos` action (list/register payment with covered-gastos validation), `resumen`, `proximos-vencimientos`, `?sin_pago_deuda=true` filter on gastos.
+- [x] Frontend: "Deudas" tab in `Finanzas.jsx` (conditional form fields by `tipo_amortizacion`, debts table, payments modal with gasto checklist + history) and Dashboard integration (Deuda Pendiente card, Deuda por Categoría chart, próximos vencimientos table).
+- [x] 25 E2E API tests passed against the live deployment (all 7 spec verification points + multi-tenant isolation); found and fixed one bug: fully-paid `cuenta_por_pagar` debts now auto-close to `estado='pagada'`.
 
 ### FIBRAs Investment Simulation
 
@@ -89,7 +103,7 @@ Added under Finanzas: a catalog of Mexican FIBRAs (real estate investment trusts
 - [x] Investment simulation (`SimularView`, `SimulacionForm.jsx`, `SimulacionResultado.jsx`).
 - [x] Simulation history per organization (`SimulacionInversionViewSet`, `Historial.jsx`).
 - [x] Integrated into the services/attributes and quote system (per commit `0d2e499`).
-- [ ] Automatic data sync (`sync_fibras` management command exists and works, but nothing triggers it — currently 100% manual). A local macOS `launchd` job was set up and verified working, then **reverted** once it was decided this machine won't be the final host. Deferred until hosting is decided — inside Docker the likely mechanism is a dedicated cron container (`supercronic`/`ofelia`) alongside the app, tracked as part of [Dockerization](Dockerization.md).
+- [x] Automatic data sync — resolved via a dedicated `fibras-sync` service in `docker-compose.yml` (same backend image, loop of `python manage.py sync_fibras` + `sleep 86400`), deployed and running on the CasaOS host.
 
 ### Dockerization
 
@@ -105,6 +119,7 @@ Full plan documented in [Dockerization.md](Dockerization.md). Target use case: s
 - [x] Root `docker-compose.yml` (3 services: `db` Postgres 16, `backend`, `frontend`) with named volumes for `postgres_data`, `media`, `staticfiles`, and a healthcheck-gated `depends_on` so backend waits for Postgres to be healthy.
 - [x] Root `.env.example` documenting all required variables (`SECRET_KEY`, `DEBUG`, `ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, `FRONTEND_URL`, `POSTGRES_*`, `HTTP_PORT`).
 - [x] **Verified end-to-end** with a real `docker compose build && up`: both images build clean (found and fixed one real issue — `libgdk-pixbuf2.0-0` was renamed to `libgdk-pixbuf-2.0-0` in current Debian trixie, the base of `python:3.12-slim`), migrations ran clean against a fresh Postgres container, `collectstatic` ran via whitenoise, gunicorn started with 3 workers, nginx served the SPA (`200`) and proxied `/api` correctly (`401` without a token — proves the proxy reaches Django, not a connection failure), and a full registration write (`POST /api/organizaciones/registro/` → `201`) was confirmed to land in the actual Postgres table via `psql`. Test containers/volumes torn down afterward (`docker compose down` + volume cleanup).
-- [ ] `sync_fibras` cron container (`supercronic`/`ofelia`) — still pending, see FIBRAs section above.
+- [x] `sync_fibras` cron container — done via `fibras-sync` service in `docker-compose.yml` (see FIBRAs section above).
+- [x] Deployed to production on the CasaOS home server: port 8080 (avoids CasaOS on 80), accessible via LAN (`192.168.1.101:8080`) and Tailscale (`100.96.46.88:8080`); `CSRF_TRUSTED_ORIGINS` configured, Django admin proxied at `/admin/` through nginx.
 - [ ] Not yet done: SQLite → Postgres **data** migration for the existing local dataset (dumpdata/loaddata or pgloader) — today's local SQLite data was not migrated, only verified that a fresh Postgres schema works.
 - [ ] Not yet done: reverse proxy TLS/HTTPS (fine for local/home network use over HTTP; needed before exposing to the internet for a client).
