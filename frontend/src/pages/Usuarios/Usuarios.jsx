@@ -17,6 +17,34 @@ const ROLES = [
 
 const emptyForm = { email: '', rol: 'vendedor' }
 
+function buildInviteLink(token) {
+  return `${window.location.origin}/invitaciones/aceptar/${token}`
+}
+
+async function copiarAlPortapapeles(texto) {
+  // navigator.clipboard solo existe en contextos seguros (HTTPS o localhost).
+  // Este proyecto suele desplegarse en HTTP plano sobre una IP de LAN, donde
+  // la API no está disponible en absoluto (no solo falla: ni siquiera existe).
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(texto)
+    return
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = texto
+  textarea.style.position = 'fixed'
+  textarea.style.opacity = '0'
+  document.body.appendChild(textarea)
+  textarea.focus()
+  textarea.select()
+  try {
+    const exitoso = document.execCommand('copy')
+    if (!exitoso) throw new Error('No se pudo ejecutar el comando de copiado')
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
+
 export function Usuarios() {
   const [usuarios, setUsuarios] = useState([])
   const [invitaciones, setInvitaciones] = useState([])
@@ -24,6 +52,7 @@ export function Usuarios() {
   const [form, setForm] = useState(emptyForm)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [copiedId, setCopiedId] = useState(null)
 
   function load() {
     setLoading(true)
@@ -51,6 +80,18 @@ export function Usuarios() {
       load()
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo enviar la invitación'))
+    }
+  }
+
+  async function copiarLink(invitacion) {
+    setError('')
+    const link = buildInviteLink(invitacion.token)
+    try {
+      await copiarAlPortapapeles(link)
+      setCopiedId(invitacion.id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch {
+      setError(`No se pudo copiar automáticamente. Copiá el link manualmente: ${link}`)
     }
   }
 
@@ -123,9 +164,14 @@ export function Usuarios() {
                 key: 'acciones',
                 header: '',
                 render: (i) => (
-                  <Button variant="secondary" onClick={() => cancelarInvitacion(i)}>
-                    Cancelar
-                  </Button>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button variant="secondary" onClick={() => copiarLink(i)}>
+                      {copiedId === i.id ? '¡Copiado!' : 'Copiar link'}
+                    </Button>
+                    <Button variant="secondary" onClick={() => cancelarInvitacion(i)}>
+                      Cancelar
+                    </Button>
+                  </div>
                 ),
               },
             ]}

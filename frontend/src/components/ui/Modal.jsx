@@ -2,12 +2,15 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import styles from './Modal.module.css'
 
-export function Modal({ open, title, onClose, children }) {
+export function Modal({ open, title, onClose, children, wide = false }) {
   if (!open) return null
 
   return createPortal(
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.dialog} onClick={(event) => event.stopPropagation()}>
+      <div
+        className={`${styles.dialog} ${wide ? styles.dialogWide : ''}`}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className={styles.header}>
           <h3 className={styles.title}>{title}</h3>
           <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Cerrar">

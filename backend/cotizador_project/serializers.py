@@ -237,10 +237,10 @@ class InvitacionSerializer(serializers.ModelSerializer):
         model = Invitacion
         fields = [
             'id', 'organization', 'email', 'rol', 'estado',
-            'invitado_por', 'creado', 'expira',
+            'invitado_por', 'creado', 'expira', 'token',
         ]
         read_only_fields = [
-            'id', 'organization', 'estado', 'invitado_por', 'creado', 'expira',
+            'id', 'organization', 'estado', 'invitado_por', 'creado', 'expira', 'token',
         ]
 
 
@@ -318,6 +318,8 @@ class RegistroOrganizacionSerializer(serializers.Serializer):
         return value
 
     def create(self, validated_data):
+        from finanzas_app.models import CategoriaDeuda
+
         organization = Organization.objects.create(
             nombre=validated_data['nombre'],
             email=validated_data['email'],
@@ -335,4 +337,21 @@ class RegistroOrganizacionSerializer(serializers.Serializer):
             rol='admin',
             **User.permisos_por_defecto('admin'),
         )
+
+        _CATEGORIAS_DEUDA_DEFAULT = [
+            {'nombre': 'Tarjeta de crédito', 'icono': '💳', 'color': '#e74c3c', 'tipo_amortizacion': 'revolvente'},
+            {'nombre': 'Línea de crédito',   'icono': '🏦', 'color': '#c0392b', 'tipo_amortizacion': 'revolvente'},
+            {'nombre': 'Préstamo personal',  'icono': '🤝', 'color': '#e67e22', 'tipo_amortizacion': 'cuotas_fijas'},
+            {'nombre': 'Préstamo hipotecario','icono': '🏠', 'color': '#d35400', 'tipo_amortizacion': 'cuotas_fijas'},
+            {'nombre': 'Préstamo automotriz', 'icono': '🚗', 'color': '#f39c12', 'tipo_amortizacion': 'cuotas_fijas'},
+            {'nombre': 'Préstamo de negocio', 'icono': '💼', 'color': '#8e44ad', 'tipo_amortizacion': 'cuotas_fijas'},
+            {'nombre': 'Deuda con proveedores','icono': '📦', 'color': '#2980b9', 'tipo_amortizacion': 'cuenta_por_pagar'},
+            {'nombre': 'Impuestos por pagar', 'icono': '🧾', 'color': '#16a085', 'tipo_amortizacion': 'cuenta_por_pagar'},
+            {'nombre': 'Otro',               'icono': '📋', 'color': '#7f8c8d', 'tipo_amortizacion': 'cuotas_fijas'},
+        ]
+        CategoriaDeuda.objects.bulk_create([
+            CategoriaDeuda(organization=organization, **cat)
+            for cat in _CATEGORIAS_DEUDA_DEFAULT
+        ])
+
         return user

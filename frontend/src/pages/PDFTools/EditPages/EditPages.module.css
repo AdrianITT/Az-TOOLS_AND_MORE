@@ -32,6 +32,34 @@
   border-radius: var(--radius);
   padding: 10px;
   background: var(--color-surface);
+  position: relative;
+}
+
+.dragHandle {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: grab;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+}
+
+.dragHandle:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .thumb {

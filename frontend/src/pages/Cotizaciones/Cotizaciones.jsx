@@ -30,6 +30,7 @@ export function Cotizaciones() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [duplicandoId, setDuplicandoId] = useState(null)
 
   useEffect(() => {
     api.get('/clientes/').then((data) => setClientes(data.results ?? data))
@@ -62,6 +63,19 @@ export function Cotizaciones() {
       setCotizaciones((current) => current.filter((c) => c.id !== id))
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo eliminar la cotización'))
+    }
+  }
+
+  async function handleDuplicar(id) {
+    setError('')
+    setDuplicandoId(id)
+    try {
+      const copia = await api.post(`/cotizaciones/${id}/duplicar/`)
+      navigate(`/cotizaciones/${copia.id}`)
+    } catch (err) {
+      setError(getErrorMessage(err, 'No se pudo duplicar la cotización'))
+    } finally {
+      setDuplicandoId(null)
     }
   }
 
@@ -129,6 +143,13 @@ export function Cotizaciones() {
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                   <Button variant="secondary" onClick={() => navigate(`/cotizaciones/${c.id}`)}>
                     Ver / Editar
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={duplicandoId === c.id}
+                    onClick={() => handleDuplicar(c.id)}
+                  >
+                    {duplicandoId === c.id ? 'Duplicando…' : 'Duplicar'}
                   </Button>
                   {user?.puede_eliminar_cotizaciones && (
                     <Button variant="danger" onClick={() => setConfirmDeleteId(c.id)}>

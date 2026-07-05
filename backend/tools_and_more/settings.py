@@ -25,6 +25,7 @@ env = environ.Env(
     DEBUG=(bool, True),
     ALLOWED_HOSTS=(list, []),
     CORS_ALLOWED_ORIGINS=(list, ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1:5173']),
+    CSRF_TRUSTED_ORIGINS=(list, ['http://localhost:5173', 'http://localhost:3000']),
     FRONTEND_URL=(str, 'http://localhost:5173'),
     EMAIL_BACKEND=(str, 'django.core.mail.backends.console.EmailBackend'),
     EMAIL_HOST=(str, ''),
@@ -36,8 +37,20 @@ env = environ.Env(
     FIBRAS_SYNC_SLEEP_SECONDS=(float, 1.0),
     FIBRAS_HISTORIAL_LOOKBACK_YEARS=(int, 10),
     FIBRAS_STALE_DATA_DAYS=(int, 3),
+    MAX_UPLOAD_SIZE_MB=(int, 150),
 )
 environ.Env.read_env(BASE_DIR / '.env')
+
+# Tamaño máximo de subida (PDFs, imágenes, Word, etc.). El default de Django
+# (2.5 MB) es demasiado bajo para las herramientas de PDF (proteger, unir,
+# comprimir) y causaba 413 en archivos reales; ver changes/PRUEBAS_LIMITES_PDF.md.
+# El default (150MB) se eligió para cubrir "Unir PDFs" con varios archivos a
+# la vez: pdf_tools_app ya limita cada archivo individual a 25MB (ver
+# MAX_FILE_SIZE_MB en pdf_tools_app/serializers.py), así que este límite de
+# infraestructura debe ser mayor a ese tope por archivo, no igual.
+MAX_UPLOAD_SIZE_MB = env('MAX_UPLOAD_SIZE_MB')
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 
 FIBRAS_SYNC_SLEEP_SECONDS = env('FIBRAS_SYNC_SLEEP_SECONDS')
 FIBRAS_HISTORIAL_LOOKBACK_YEARS = env('FIBRAS_HISTORIAL_LOOKBACK_YEARS')
@@ -91,6 +104,7 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS')
+CSRF_TRUSTED_ORIGINS = env('CSRF_TRUSTED_ORIGINS')
 
 REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',

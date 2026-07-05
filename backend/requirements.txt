@@ -6,6 +6,7 @@ django-filter==25.2
 djangorestframework==3.17.1
 gunicorn==23.0.0
 mammoth==1.12.0
+pdf2docx==0.5.13
 pillow==12.3.0
 psycopg2-binary==2.9.12
 pymupdf==1.28.0

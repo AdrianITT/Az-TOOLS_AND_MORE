@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { FileImage, FileStack, FileType, Scissors, Images, LayoutGrid } from 'lucide-react'
+import { FileImage, FileStack, FileType, Scissors, Images, LayoutGrid, Minimize2, Lock, LockOpen, FileText } from 'lucide-react'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
 import styles from './PDFTools.module.css'
@@ -21,7 +21,7 @@ const TOOLS = [
     to: '/pdf-tools/word-a-pdf',
     icon: FileType,
     title: 'Word a PDF',
-    description: 'Convierte y une documentos .docx en un único PDF.',
+    description: 'Convierte y une documentos .doc y .docx en un único PDF.',
   },
   {
     to: '/pdf-tools/dividir-pdf',
@@ -39,7 +39,31 @@ const TOOLS = [
     to: '/pdf-tools/editar-paginas',
     icon: LayoutGrid,
     title: 'Editar páginas',
-    description: 'Reordena, rota o elimina páginas de un PDF existente.',
+    description: 'Reordena (arrastrando), rota o elimina páginas de un PDF.',
+  },
+  {
+    to: '/pdf-tools/comprimir-pdf',
+    icon: Minimize2,
+    title: 'Comprimir PDF',
+    description: 'Reduce el tamaño de un PDF comprimiendo su contenido interno.',
+  },
+  {
+    to: '/pdf-tools/proteger-pdf',
+    icon: Lock,
+    title: 'Proteger PDF',
+    description: 'Agrega una contraseña a un PDF para proteger su acceso.',
+  },
+  {
+    to: '/pdf-tools/desbloquear-pdf',
+    icon: LockOpen,
+    title: 'Desbloquear PDF',
+    description: 'Elimina la contraseña de un PDF protegido.',
+  },
+  {
+    to: '/pdf-tools/pdf-a-word',
+    icon: FileText,
+    title: 'PDF a Word',
+    description: 'Convierte un PDF a documento .docx editable.',
   },
 ]
 

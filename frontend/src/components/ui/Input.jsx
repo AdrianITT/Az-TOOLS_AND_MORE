@@ -1,10 +1,11 @@
 import styles from './Input.module.css'
 
-export function Field({ label, error, children }) {
+export function Field({ label, hint, error, children }) {
   return (
     <label className={styles.field}>
       {label && <span className={styles.label}>{label}</span>}
       {children}
+      {hint && !error && <span className={styles.hint}>{hint}</span>}
       {error && <span className={styles.error}>{error}</span>}
     </label>
   )

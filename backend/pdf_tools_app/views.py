@@ -8,20 +8,27 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .serializers import (
+    CompressPdfSerializer,
     EditPagesSerializer,
     ImagesToPdfSerializer,
     InspectPdfSerializer,
     MergePdfSerializer,
     PdfToImagesSerializer,
+    PdfToWordSerializer,
+    ProtectPdfSerializer,
     SplitPdfSerializer,
+    UnlockPdfSerializer,
     WordToPdfSerializer,
     build_output_filename,
 )
+from .services.compress_pdf import compress_pdf
 from .services.edit_pages import edit_pdf_pages, inspect_pdf
 from .services.exceptions import PdfToolError
 from .services.images_to_pdf import images_to_pdf
 from .services.merge_pdf import merge_pdfs
 from .services.pdf_to_images import pdf_to_images
+from .services.pdf_to_word import pdf_to_word
+from .services.protect_pdf import protect_pdf, unlock_pdf
 from .services.split_pdf import split_pdf
 from .services.word_to_pdf import words_to_pdf
 
@@ -113,6 +120,40 @@ class PdfToImagesView(BasePdfToolView):
 
     def call_service(self, data):
         return pdf_to_images(data['file'], data.get('format', 'png'))
+
+
+class CompressPdfView(BasePdfToolView):
+    serializer_class = CompressPdfSerializer
+    default_stem = 'comprimido'
+
+    def call_service(self, data):
+        return compress_pdf(data['file'])
+
+
+class ProtectPdfView(BasePdfToolView):
+    serializer_class = ProtectPdfSerializer
+    default_stem = 'protegido'
+
+    def call_service(self, data):
+        return protect_pdf(data['file'], data['password'])
+
+
+class UnlockPdfView(BasePdfToolView):
+    serializer_class = UnlockPdfSerializer
+    default_stem = 'desbloqueado'
+
+    def call_service(self, data):
+        return unlock_pdf(data['file'], data['password'])
+
+
+class PdfToWordView(BasePdfToolView):
+    serializer_class = PdfToWordSerializer
+    default_stem = 'documento'
+    output_ext = 'docx'
+    output_content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+    def call_service(self, data):
+        return pdf_to_word(data['file'])
 
 
 class InspectPdfView(APIView):

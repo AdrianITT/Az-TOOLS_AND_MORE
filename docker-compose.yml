@@ -30,6 +30,27 @@ services:
     expose:
       - "8000"
 
+  fibras-sync:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-aztools}:${POSTGRES_PASSWORD:-aztools}@db:5432/${POSTGRES_DB:-aztools}
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        python manage.py wait_for_db
+        while true; do
+          echo "[fibras-sync] Sincronizando precios..."
+          python manage.py sync_fibras
+          echo "[fibras-sync] Listo. Esperando 24h..."
+          sleep 86400
+        done
+
   frontend:
     build: ./frontend
     restart: unless-stopped

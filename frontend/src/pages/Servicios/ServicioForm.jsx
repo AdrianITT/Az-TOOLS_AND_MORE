@@ -36,6 +36,7 @@ export function ServicioForm() {
   const [initialForm, setInitialForm] = useState(emptyForm)
   const [categoriaNueva, setCategoriaNueva] = useState('')
   const [valoresForm, setValoresForm] = useState({})
+  const [initialValoresForm, setInitialValoresForm] = useState({})
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(isEditing)
@@ -77,6 +78,7 @@ export function ServicioForm() {
           valores[v.atributo] = v.valor
         })
         setValoresForm(valores)
+        setInitialValoresForm(valores)
       })
       .catch(() => setError('No se pudo cargar el servicio'))
       .finally(() => setLoading(false))
@@ -95,7 +97,9 @@ export function ServicioForm() {
     [atributos, categoriaActual],
   )
 
-  const isDirty = JSON.stringify(form) !== JSON.stringify(initialForm)
+  const isDirty =
+    JSON.stringify(form) !== JSON.stringify(initialForm) ||
+    JSON.stringify(valoresForm) !== JSON.stringify(initialValoresForm)
   const isAtributoPending = Boolean(atributoForm.nombre.trim())
 
   function flashSuccess(message) {

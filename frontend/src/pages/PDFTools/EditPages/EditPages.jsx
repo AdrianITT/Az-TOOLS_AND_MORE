@@ -1,6 +1,20 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Download, RotateCw, X } from 'lucide-react'
+import { ArrowLeft, Download, RotateCw, X, GripVertical } from 'lucide-react'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { PageHeader } from '../../PageHeader'
 import { Card } from '../../../components/ui/Card'
 import { Button } from '../../../components/ui/Button'
@@ -18,6 +32,60 @@ import styles from './EditPages.module.css'
 
 let nextId = 0
 
+function SortablePage({ page, index, busy, onRotate, onRemove }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: page.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className={styles.pageCard}>
+      <button
+        type="button"
+        className={styles.dragHandle}
+        disabled={busy}
+        aria-label="Arrastrar para reordenar"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical size={16} />
+      </button>
+      <img
+        src={`data:image/png;base64,${page.thumbnail}`}
+        alt={`Página ${page.originalPage}`}
+        className={styles.thumb}
+        style={{ transform: `rotate(${page.rotate}deg)` }}
+      />
+      <span className={styles.pageLabel}>Pág. {index + 1} (orig. {page.originalPage})</span>
+      <div className={styles.pageActions}>
+        <button
+          type="button"
+          className={styles.iconButton}
+          disabled={busy}
+          onClick={() => onRotate(page.id)}
+          aria-label="Rotar"
+        >
+          <RotateCw size={15} />
+        </button>
+        <button
+          type="button"
+          className={styles.iconButton}
+          disabled={busy}
+          onClick={() => onRemove(page.id)}
+          aria-label="Eliminar página"
+        >
+          <X size={15} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function EditPages() {
   const [sourceFile, setSourceFile] = useState(null)
   const [pages, setPages] = useState([])
@@ -27,6 +95,8 @@ export function EditPages() {
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+
+  const sensors = useSensors(useSensor(PointerSensor))
 
   async function handleFiles(files) {
     const file = files[0]
@@ -54,14 +124,15 @@ export function EditPages() {
     }
   }
 
-  function movePage(from, to) {
-    if (to < 0 || to >= pages.length) return
-    setPages((prev) => {
-      const next = [...prev]
-      const [moved] = next.splice(from, 1)
-      next.splice(to, 0, moved)
-      return next
-    })
+  function handleDragEnd(event) {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setPages((prev) => {
+        const oldIndex = prev.findIndex((p) => p.id === active.id)
+        const newIndex = prev.findIndex((p) => p.id === over.id)
+        return arrayMove(prev, oldIndex, newIndex)
+      })
+    }
   }
 
   function rotatePage(id) {
@@ -118,7 +189,7 @@ export function EditPages() {
       />
       <Card className={styles.card}>
         <p className={styles.description}>
-          Selecciona un PDF para reordenar, rotar o eliminar sus páginas antes de generar el resultado.
+          Selecciona un PDF para reordenar (arrastrando), rotar o eliminar páginas.
         </p>
 
         {pages.length === 0 && (
@@ -135,57 +206,22 @@ export function EditPages() {
 
         {pages.length > 0 && (
           <>
-            <div className={styles.grid}>
-              {pages.map((page, index) => (
-                <div key={page.id} className={styles.pageCard}>
-                  <img
-                    src={`data:image/png;base64,${page.thumbnail}`}
-                    alt={`Página ${page.originalPage}`}
-                    className={styles.thumb}
-                    style={{ transform: `rotate(${page.rotate}deg)` }}
-                  />
-                  <span className={styles.pageLabel}>Pág. original {page.originalPage}</span>
-                  <div className={styles.pageActions}>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      disabled={busy || index === 0}
-                      onClick={() => movePage(index, index - 1)}
-                      aria-label="Mover antes"
-                    >
-                      ←
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      disabled={busy}
-                      onClick={() => rotatePage(page.id)}
-                      aria-label="Rotar"
-                    >
-                      <RotateCw size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      disabled={busy}
-                      onClick={() => removePage(page.id)}
-                      aria-label="Eliminar página"
-                    >
-                      <X size={15} />
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.iconButton}
-                      disabled={busy || index === pages.length - 1}
-                      onClick={() => movePage(index, index + 1)}
-                      aria-label="Mover después"
-                    >
-                      →
-                    </button>
-                  </div>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={pages.map((p) => p.id)} strategy={rectSortingStrategy}>
+                <div className={styles.grid}>
+                  {pages.map((page, index) => (
+                    <SortablePage
+                      key={page.id}
+                      page={page}
+                      index={index}
+                      busy={busy}
+                      onRotate={rotatePage}
+                      onRemove={removePage}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
 
             <Field label="Nombre del archivo (opcional)">
               <Input

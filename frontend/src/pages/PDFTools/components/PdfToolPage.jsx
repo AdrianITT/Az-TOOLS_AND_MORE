@@ -108,7 +108,7 @@ export function PdfToolPage({
               </Select>
             ) : (
               <Input
-                type="text"
+                type={field.type === 'password' ? 'password' : 'text'}
                 placeholder={field.placeholder}
                 value={extraValues[field.name]}
                 disabled={submitting}
@@ -131,7 +131,7 @@ export function PdfToolPage({
           </Field>
         )}
 
-        {success && <p className={styles.success}>PDF generado y descargado correctamente.</p>}
+        {success && <p className={styles.success}>Archivo generado y descargado correctamente.</p>}
 
         {submitting && <ProgressBar value={progress} />}
 

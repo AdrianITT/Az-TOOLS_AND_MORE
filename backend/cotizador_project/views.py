@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.db.models import ProtectedError
 from django.http import FileResponse
 from rest_framework import mixins, viewsets
@@ -15,7 +16,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .mixins import OrganizationFilterMixin
-from .models import AtributoPlantilla, Cliente, Cotizacion, CotizacionDetalle, Invitacion, Servicio, Sucursal, User
+from .models import (
+    AtributoPlantilla,
+    Cliente,
+    Cotizacion,
+    CotizacionDetalle,
+    CotizacionValor,
+    Invitacion,
+    Servicio,
+    Sucursal,
+    User,
+)
 from .pdf import generar_pdf_cotizacion, enviar_pdf_por_email
 from .permissions import (
     HasRolPermission,
@@ -129,7 +140,7 @@ class CotizacionViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     ]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar', 'partial_update': 'editar',
-        'destroy': 'eliminar', 'cambiar_estado': 'editar',
+        'destroy': 'eliminar', 'cambiar_estado': 'editar', 'duplicar': 'crear',
     }
     filterset_fields = ['estado', 'cliente']
     search_fields = ['numero', 'cliente__nombre']
@@ -191,6 +202,44 @@ class CotizacionViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
             return Response({'success': True, 'message': mensaje}, status=200)
         else:
             raise ValidationError({'error': mensaje})
+
+    @action(detail=True, methods=['post'])
+    def duplicar(self, request, pk=None):
+        """Crea una copia en borrador de la cotización, con sus items y valores.
+
+        La original nunca se modifica: solo se lee para construir la copia.
+        """
+        original = self.get_object()
+
+        with transaction.atomic():
+            copia = Cotizacion.objects.create(
+                organization=original.organization,
+                cliente=original.cliente,
+                usuario_creador=request.user,
+                descripcion=original.descripcion,
+                estado='borrador',
+                iva_porcentaje=original.iva_porcentaje,
+                fecha_vencimiento=original.fecha_vencimiento,
+            )
+
+            for item in original.items.all():
+                nuevo_item = CotizacionDetalle.objects.create(
+                    cotizacion=copia,
+                    servicio=item.servicio,
+                    cantidad=item.cantidad,
+                    precio_unitario=item.precio_unitario,
+                    notas=item.notas,
+                )
+                # CotizacionDetalle.save() ya prellenó valores desde el catálogo
+                # del servicio; sobreescribimos con los valores reales de la original.
+                for valor in item.valores.all():
+                    CotizacionValor.objects.update_or_create(
+                        detalle=nuevo_item,
+                        atributo=valor.atributo,
+                        defaults={'valor': valor.valor},
+                    )
+
+        return Response(self.get_serializer(copia).data, status=201)
 
 
 class CotizacionDetalleViewSet(viewsets.ModelViewSet):

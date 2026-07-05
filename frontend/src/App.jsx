@@ -34,6 +34,10 @@ import { WordToPDF } from './pages/PDFTools/WordToPDF/WordToPDF'
 import { SplitPDF } from './pages/PDFTools/SplitPDF/SplitPDF'
 import { PdfToImages } from './pages/PDFTools/PdfToImages/PdfToImages'
 import { EditPages } from './pages/PDFTools/EditPages/EditPages'
+import { CompressPDF } from './pages/PDFTools/CompressPDF/CompressPDF'
+import { ProtectPDF } from './pages/PDFTools/ProtectPDF/ProtectPDF'
+import { UnlockPDF } from './pages/PDFTools/UnlockPDF/UnlockPDF'
+import { PdfToWord } from './pages/PDFTools/PdfToWord/PdfToWord'
 import { Organizacion } from './pages/Organizacion/Organizacion'
 import { Sucursales } from './pages/Sucursales/Sucursales'
 
@@ -82,6 +86,10 @@ function App() {
             <Route path="/pdf-tools/dividir-pdf" element={<SplitPDF />} />
             <Route path="/pdf-tools/pdf-a-imagenes" element={<PdfToImages />} />
             <Route path="/pdf-tools/editar-paginas" element={<EditPages />} />
+            <Route path="/pdf-tools/comprimir-pdf" element={<CompressPDF />} />
+            <Route path="/pdf-tools/proteger-pdf" element={<ProtectPDF />} />
+            <Route path="/pdf-tools/desbloquear-pdf" element={<UnlockPDF />} />
+            <Route path="/pdf-tools/pdf-a-word" element={<PdfToWord />} />
             <Route path="/usuarios" element={<Usuarios />} />
             <Route path="/organizacion" element={<Organizacion />} />
             <Route path="/sucursales" element={<Sucursales />} />

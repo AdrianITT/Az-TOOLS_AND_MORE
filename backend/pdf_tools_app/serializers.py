@@ -122,3 +122,33 @@ class PdfToImagesSerializer(OutputNameMixin):
 
     def validate_file(self, f):
         return _validate_files([f], PDF_EXTENSIONS, min_files=1, kind_label='PDF')[0]
+
+
+class CompressPdfSerializer(OutputNameMixin):
+    file = serializers.FileField()
+
+    def validate_file(self, f):
+        return _validate_files([f], PDF_EXTENSIONS, min_files=1, kind_label='PDF')[0]
+
+
+class ProtectPdfSerializer(OutputNameMixin):
+    file = serializers.FileField()
+    password = serializers.CharField(min_length=1)
+
+    def validate_file(self, f):
+        return _validate_files([f], PDF_EXTENSIONS, min_files=1, kind_label='PDF')[0]
+
+
+class UnlockPdfSerializer(OutputNameMixin):
+    file = serializers.FileField()
+    password = serializers.CharField(min_length=1)
+
+    def validate_file(self, f):
+        return _validate_files([f], PDF_EXTENSIONS, min_files=1, kind_label='PDF')[0]
+
+
+class PdfToWordSerializer(OutputNameMixin):
+    file = serializers.FileField()
+
+    def validate_file(self, f):
+        return _validate_files([f], PDF_EXTENSIONS, min_files=1, kind_label='PDF')[0]

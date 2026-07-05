@@ -12,6 +12,25 @@ import styles from './Fibras.module.css'
 const hoy = new Date().toISOString().slice(0, 10)
 const hace5Anios = new Date(new Date().setFullYear(new Date().getFullYear() - 5)).toISOString().slice(0, 10)
 
+function formatFechaLarga(fechaISO) {
+  if (!fechaISO) return ''
+  const [year, month, day] = fechaISO.split('-')
+  return `${day}/${month}/${year}`
+}
+
+function describirPeriodo(fechaInicio, fechaFin) {
+  if (!fechaInicio || !fechaFin) return ''
+  const inicio = new Date(`${fechaInicio}T00:00:00`)
+  const fin = new Date(`${fechaFin}T00:00:00`)
+  const dias = Math.round((fin - inicio) / (1000 * 60 * 60 * 24))
+  if (dias <= 0) return ''
+  const anios = Math.floor(dias / 365)
+  const mesesRestantes = Math.round((dias % 365) / 30)
+  if (anios === 0) return `${mesesRestantes} mes${mesesRestantes === 1 ? '' : 'es'}`
+  if (mesesRestantes === 0) return `${anios} año${anios === 1 ? '' : 's'}`
+  return `${anios} año${anios === 1 ? '' : 's'} y ${mesesRestantes} mes${mesesRestantes === 1 ? '' : 'es'}`
+}
+
 const emptyForm = {
   tickersSeleccionados: [],
   monto_inicial: '100000',
@@ -62,6 +81,14 @@ export function SimulacionForm() {
       setError('Elegí al menos una FIBRA para simular')
       return
     }
+    if (form.fecha_inicio >= form.fecha_fin) {
+      setError('La fecha de inicio debe ser anterior a la fecha de fin')
+      return
+    }
+    if (form.fecha_fin > hoy) {
+      setError('La fecha de fin no puede ser una fecha futura')
+      return
+    }
     setSubmitting(true)
     try {
       const payload = {
@@ -102,6 +129,11 @@ export function SimulacionForm() {
     }
   }
 
+  const errorRangoFechas =
+    form.fecha_inicio && form.fecha_fin && form.fecha_inicio >= form.fecha_fin
+      ? 'Debe ser posterior a la fecha de inicio'
+      : ''
+
   return (
     <div>
       <PageHeader
@@ -116,6 +148,11 @@ export function SimulacionForm() {
       {error && <p className={formStyles.error}>{error}</p>}
 
       <Card style={{ marginBottom: 20 }}>
+        <p style={{ marginBottom: 16, color: 'var(--color-text-muted)', fontSize: 14 }}>
+          Esta simulación es un <strong>backtest histórico</strong>: calcula qué hubiera pasado si invertías el monto
+          indicado en la <strong>fecha de inicio</strong>, usando los precios y dividendos reales de cada FIBRA, y
+          evalúa el resultado hasta la <strong>fecha de fin</strong>. No es una proyección de rendimientos futuros.
+        </p>
         <form className={formStyles.form} onSubmit={handleSubmit}>
           <Field label="FIBRAs a simular (elegí 2 o más para comparar)">
             <div className={styles.tickerCheckboxes}>
@@ -145,13 +182,40 @@ export function SimulacionForm() {
           </div>
 
           <div className={formStyles.row}>
-            <Field label="Fecha de inicio">
-              <Input type="date" value={form.fecha_inicio} onChange={update('fecha_inicio')} required />
+            <Field label="Fecha de inicio" hint="Día en el que se realiza la inversión inicial (histórico).">
+              <Input
+                type="date"
+                value={form.fecha_inicio}
+                onChange={update('fecha_inicio')}
+                max={form.fecha_fin || hoy}
+                title="Fecha en la que 'entrás' a invertir el monto inicial. La simulación usa los precios y dividendos reales desde este día."
+                required
+              />
             </Field>
-            <Field label="Fecha de fin">
-              <Input type="date" value={form.fecha_fin} onChange={update('fecha_fin')} required />
+            <Field
+              label="Fecha de fin"
+              hint="Día hasta el cual se calcula el resultado de la inversión."
+              error={errorRangoFechas}
+            >
+              <Input
+                type="date"
+                value={form.fecha_fin}
+                onChange={update('fecha_fin')}
+                min={form.fecha_inicio}
+                max={hoy}
+                title="Fecha de corte para calcular el valor final, el retorno y los dividendos. Por defecto, hoy."
+                required
+              />
             </Field>
           </div>
+
+          {form.fecha_inicio && form.fecha_fin && form.fecha_inicio < form.fecha_fin && (
+            <p style={{ fontSize: 13, color: 'var(--color-text-muted)', marginTop: -8 }}>
+              Se simulará una inversión desde el <strong>{formatFechaLarga(form.fecha_inicio)}</strong> hasta el{' '}
+              <strong>{formatFechaLarga(form.fecha_fin)}</strong> (
+              {describirPeriodo(form.fecha_inicio, form.fecha_fin)}).
+            </p>
+          )}
 
           <Field label="Aportación periódica">
             <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -174,7 +238,7 @@ export function SimulacionForm() {
             </div>
           )}
 
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || Boolean(errorRangoFechas)}>
             {submitting ? 'Simulando…' : 'Simular'}
           </Button>
         </form>

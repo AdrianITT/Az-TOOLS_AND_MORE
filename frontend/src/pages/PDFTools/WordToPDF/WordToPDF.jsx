@@ -4,7 +4,7 @@ export function WordToPDF() {
   return (
     <PdfToolPage
       title="Word a PDF"
-      description="Selecciona uno o más documentos .docx, ordénalos y conviértelos en un solo PDF."
+      description="Selecciona uno o más documentos .doc o .docx, ordénalos y conviértelos en un solo PDF."
       endpoint="/word-to-pdf/"
       accept=".doc,.docx"
       minFiles={1}

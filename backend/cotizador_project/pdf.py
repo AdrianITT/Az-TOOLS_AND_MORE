@@ -1,10 +1,32 @@
 import base64
 import html
 import mimetypes
+import re
 from io import BytesIO
 from weasyprint import HTML
 from django.core.mail import EmailMessage
 from django.conf import settings
+
+WHATSAPP_ICON_SVG = (
+    '<svg viewBox="0 0 32 32" width="12" height="12" xmlns="http://www.w3.org/2000/svg">'
+    '<path fill="#25D366" d="M16 0C7.163 0 0 7.163 0 16c0 2.82.738 5.47 2.03 7.765L0 32l8.44-1.99A15.93 15.93 0 0 0 16 32c8.837 0 16-7.163 16-16S24.837 0 16 0z"/>'
+    '<path fill="#fff" d="M23.47 19.09c-.4-.2-2.36-1.16-2.72-1.3-.37-.13-.63-.2-.9.2-.27.4-1.03 1.3-1.26 1.56-.23.27-.46.3-.86.1-.4-.2-1.67-.62-3.18-1.97-1.18-1.05-1.97-2.35-2.2-2.75-.23-.4-.02-.61.17-.81.18-.18.4-.46.6-.7.2-.23.27-.4.4-.66.13-.27.07-.5-.03-.7-.1-.2-.9-2.17-1.24-2.97-.33-.79-.66-.68-.9-.7-.23-.01-.5-.01-.76-.01-.27 0-.7.1-1.06.5-.37.4-1.4 1.37-1.4 3.33 0 1.97 1.43 3.87 1.63 4.13.2.27 2.8 4.27 6.78 5.99.95.41 1.68.65 2.26.83.95.3 1.81.26 2.5.16.76-.11 2.36-.96 2.7-1.89.33-.93.33-1.72.23-1.89-.1-.16-.36-.26-.76-.46z"/>'
+    '</svg>'
+)
+
+
+def _whatsapp_link(telefono, texto):
+    """Envuelve `texto` en un link https://wa.me/<dígitos> con el ícono de WhatsApp, o lo deja sin envolver si no hay número."""
+    if not telefono:
+        return texto
+    digitos = re.sub(r'\D', '', telefono)
+    if not digitos:
+        return texto
+    return (
+        f'<a class="whatsapp-link" href="https://wa.me/{digitos}">'
+        f'{texto} {WHATSAPP_ICON_SVG}'
+        f'</a>'
+    )
 
 
 def _logo_data_uri(org):
@@ -244,6 +266,33 @@ def generar_pdf_cotizacion(cotizacion):
                 margin-top: 2px;
             }}
 
+            .item-attrs {{
+                font-size: 11px;
+                color: var(--muted);
+                margin-top: 2px;
+            }}
+
+            .item-attrs .attr {{
+                display: inline-block;
+                margin-right: 8px;
+            }}
+
+            .item-attrs .attr strong {{
+                color: var(--fg);
+                font-weight: 600;
+            }}
+
+            .whatsapp-link {{
+                color: inherit;
+                text-decoration: none;
+                white-space: nowrap;
+            }}
+
+            .whatsapp-link svg {{
+                vertical-align: middle;
+                margin-left: 2px;
+            }}
+
             /* Totals */
             .totals {{
                 margin-left: auto;
@@ -315,7 +364,7 @@ def generar_pdf_cotizacion(cotizacion):
                     <div class="org-name">{esc(org.nombre)}</div>
                     <div class="org-details">
                         {esc(org.email)}<br>
-                        {esc(org.telefono) if org.telefono else ''}
+                        {_whatsapp_link(org.telefono, esc(org.telefono)) if org.telefono else ''}
                     </div>
                 </div>
             </div>
@@ -340,7 +389,7 @@ def generar_pdf_cotizacion(cotizacion):
                 <h3>Contacto</h3>
                 <p>
                     {esc(cliente.email)}<br>
-                    {esc(cliente.telefono) if cliente.telefono else ''}
+                    {_whatsapp_link(cliente.telefono, esc(cliente.telefono)) if cliente.telefono else ''}
                 </p>
             </div>
         </div>
@@ -361,11 +410,20 @@ def generar_pdf_cotizacion(cotizacion):
     for index, item in enumerate(items, start=1):
         subtotal = item.calcular_subtotal()
         notas_html = f'<div class="item-notes">{esc(item.notas)}</div>' if item.notas else ''
+        valores = item.valores.all()
+        attrs_html = ''
+        if valores:
+            attrs_items = ''.join(
+                f'<span class="attr"><strong>{esc(v.atributo.nombre)}:</strong> {esc(v.valor)}</span>'
+                for v in valores
+            )
+            attrs_html = f'<div class="item-attrs">{attrs_items}</div>'
         html_content += f"""
                 <tr>
                     <td class="col-index">{index}</td>
                     <td>
                         <div class="item-desc">{esc(item.servicio.nombre)}</div>
+                        {attrs_html}
                         {notas_html}
                     </td>
                     <td class="text-right col-amount">{item.cantidad}</td>
@@ -411,7 +469,7 @@ def generar_pdf_cotizacion(cotizacion):
         <div class="footer">
             <span>
                 {esc(org.nombre)}
-                {' &middot; ' + esc(org.telefono) if org.telefono else ''}
+                {' &middot; ' + _whatsapp_link(org.telefono, esc(org.telefono)) if org.telefono else ''}
                 {' &middot; ' + esc(org.email)}
                 {' &middot; ' + esc(org.sitio_web) if org.sitio_web else ''}
             </span>
