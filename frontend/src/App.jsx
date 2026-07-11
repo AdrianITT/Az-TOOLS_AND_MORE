@@ -14,6 +14,7 @@ import { Login } from './pages/Login/Login'
 import { OnboardingHome } from './pages/Onboarding/OnboardingHome'
 import { CrearOrganizacion } from './pages/Onboarding/CrearOrganizacion'
 import { AceptarInvitacion } from './pages/AceptarInvitacion/AceptarInvitacion'
+import { CotizacionPublica } from './pages/CotizacionPublica/CotizacionPublica'
 import { Dashboard } from './pages/Dashboard/Dashboard'
 import { Clientes } from './pages/Clientes/Clientes'
 import { Servicios } from './pages/Servicios/Servicios'
@@ -56,6 +57,7 @@ function App() {
       </Route>
 
       <Route path="/invitaciones/aceptar/:token" element={<AceptarInvitacion />} />
+      <Route path="/c/:token" element={<CotizacionPublica />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<RedirectIfHasOrg />}>

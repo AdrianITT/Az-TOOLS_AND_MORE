@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { Modal } from '../../components/ui/Modal'
+import { MasOpciones, PasosFlujo } from '../../components/ui/FormExtras'
 import formStyles from '../shared-form.module.css'
 import styles from './Cotizaciones.module.css'
 
@@ -305,7 +306,7 @@ export function CotizacionForm() {
   }
 
   function abrirWhatsApp() {
-    const enlace = `${window.location.origin}/cotizaciones/${id}`
+    const enlace = `${window.location.origin}/c/${cotizacion.token_publico}`
     const mensaje = `Mira tu cotización: ${enlace}`
     const telefono = clientesById[form.cliente]?.telefono?.replace(/\D/g, '')
     const base = telefono ? `https://wa.me/${telefono}` : 'https://wa.me/'
@@ -357,7 +358,7 @@ export function CotizacionForm() {
     setQrError('')
     setQrPng(null)
     try {
-      const enlace = `${window.location.origin}/cotizaciones/${id}`
+      const enlace = `${window.location.origin}/c/${cotizacion.token_publico}`
       const response = await api.post('/qr/codigos/generar/', {
         url_data: enlace,
         titulo: cotizacion.numero,
@@ -374,6 +375,13 @@ export function CotizacionForm() {
 
   if (loading || (isEditing && !cotizacion)) return <p>Cargando…</p>
 
+  const numItems = (cotizacion?.items ?? []).length
+  const pasos = [
+    { label: 'Datos', estado: isEditing ? 'hecho' : 'activo' },
+    { label: 'Servicios', estado: !isEditing ? 'pendiente' : numItems > 0 ? 'hecho' : 'activo' },
+    { label: 'Compartir', estado: isEditing && numItems > 0 ? 'activo' : 'pendiente' },
+  ]
+
   return (
     <div>
       <PageHeader
@@ -384,6 +392,13 @@ export function CotizacionForm() {
           </Button>
         }
       />
+
+      <PasosFlujo pasos={pasos} />
+      {!isEditing && (
+        <p style={{ color: '#888', fontSize: 13, margin: '-8px 0 16px' }}>
+          Guardá los datos para poder agregar servicios y compartir.
+        </p>
+      )}
 
       {error && <p className={formStyles.error}>{error}</p>}
       {successMessage && <p className={formStyles.success}>{successMessage}</p>}
@@ -410,45 +425,52 @@ export function CotizacionForm() {
             <Field label="Fecha de vencimiento">
               <Input type="date" value={form.fecha_vencimiento} onChange={update('fecha_vencimiento')} required />
             </Field>
-            <Field label="IVA (%)">
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.iva_porcentaje}
-                onChange={update('iva_porcentaje')}
-                required
-              />
-            </Field>
           </div>
-          <Field label="Descripción / Notas">
-            <Input value={form.descripcion} onChange={update('descripcion')} />
-          </Field>
 
-          {isEditing && (
-            <div className={styles.panelHeader}>
-              <Field label="Estado">
-                <Select value={cotizacion.estado} onChange={(e) => cambiarEstado(e.target.value)}>
-                  {ESTADOS.map((e) => (
-                    <option key={e.value} value={e.value}>
-                      {e.label}
-                    </option>
-                  ))}
-                </Select>
+          <MasOpciones etiqueta="Más opciones (IVA, descripción)">
+            <div className={formStyles.row}>
+              <Field label="IVA (%)" hint="Por defecto 16%">
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.iva_porcentaje}
+                  onChange={update('iva_porcentaje')}
+                  required
+                />
               </Field>
-              <div className={styles.totalsSummary}>
-                <span>Subtotal: ${cotizacion.subtotal}</span>
-                <span>IVA ({cotizacion.iva_porcentaje}%): ${cotizacion.impuesto}</span>
-                <strong>Total: ${cotizacion.total}</strong>
-              </div>
             </div>
-          )}
+            <Field label="Descripción / Notas">
+              <Input value={form.descripcion} onChange={update('descripcion')} placeholder="Opcional" />
+            </Field>
+          </MasOpciones>
 
           <Button type="submit" disabled={submitting || (isEditing && !isDirty)}>
             {isEditing ? 'Guardar cambios' : 'Guardar y agregar servicios'}
           </Button>
         </form>
       </Card>
+
+      {isEditing && (
+        <Card style={{ marginBottom: 20 }}>
+          <div className={styles.panelHeader}>
+            <Field label="Estado">
+              <Select value={cotizacion.estado} onChange={(e) => cambiarEstado(e.target.value)}>
+                {ESTADOS.map((e) => (
+                  <option key={e.value} value={e.value}>
+                    {e.label}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <div className={styles.totalsSummary}>
+              <span>Subtotal: ${cotizacion.subtotal}</span>
+              <span>IVA ({cotizacion.iva_porcentaje}%): ${cotizacion.impuesto}</span>
+              <strong>Total: ${cotizacion.total}</strong>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {isEditing && (
         <Card>

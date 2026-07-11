@@ -3,35 +3,65 @@ from decimal import Decimal
 from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda
 
 
-class CategoriaIngresoSerializer(serializers.ModelSerializer):
+class _CategoriaUniquePorOrgMixin:
+    """Valida el UniqueConstraint(organization, nombre) antes de llegar a la BD,
+    porque `organization` se asigna en perform_create y DRF no puede inferirlo."""
+
+    def validate_nombre(self, value):
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = self.Meta.model.objects.filter(
+            organization=request.user.organization, nombre=value
+        )
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError('Ya existe una categoría con ese nombre.')
+        return value
+
+
+class CategoriaIngresoSerializer(_CategoriaUniquePorOrgMixin, serializers.ModelSerializer):
     class Meta:
         model = CategoriaIngreso
         fields = ['id', 'nombre', 'color', 'icono', 'creado']
         read_only_fields = ['id', 'creado']
 
 
-class IngresoSerializer(serializers.ModelSerializer):
+class _ComprobanteRelativoMixin:
+    """Devuelve el comprobante como URL relativa (/media/…): funciona igual
+    desde LAN y Tailscale; una absoluta fijaría un host que no siempre aplica."""
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data['comprobante'] = instance.comprobante.url if instance.comprobante else None
+        return data
+
+
+class IngresoSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
+    comprobante = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Ingreso
-        fields = ['id', 'categoria', 'categoria_nombre', 'monto', 'fecha', 'descripcion', 'creado_por', 'creado', 'actualizado']
+        fields = ['id', 'categoria', 'categoria_nombre', 'monto', 'fecha', 'descripcion', 'comprobante', 'creado_por', 'creado', 'actualizado']
         read_only_fields = ['id', 'creado_por', 'creado', 'actualizado']
 
 
-class CategoriaGastoSerializer(serializers.ModelSerializer):
+class CategoriaGastoSerializer(_CategoriaUniquePorOrgMixin, serializers.ModelSerializer):
     class Meta:
         model = CategoriaGasto
         fields = ['id', 'nombre', 'color', 'icono', 'creado']
         read_only_fields = ['id', 'creado']
 
 
-class GastoSerializer(serializers.ModelSerializer):
+class GastoSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
+    comprobante = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Gasto
-        fields = ['id', 'categoria', 'categoria_nombre', 'monto', 'fecha', 'descripcion', 'creado_por', 'creado', 'actualizado']
+        fields = ['id', 'categoria', 'categoria_nombre', 'monto', 'fecha', 'descripcion', 'comprobante', 'creado_por', 'creado', 'actualizado']
         read_only_fields = ['id', 'creado_por', 'creado', 'actualizado']
 
 
@@ -57,6 +87,7 @@ class MovimientoDetalleSerializer(serializers.Serializer):
     categoria = serializers.CharField()
     monto = serializers.DecimalField(max_digits=12, decimal_places=2)
     descripcion = serializers.CharField(allow_blank=True, allow_null=True)
+    comprobante = serializers.CharField(allow_null=True, required=False)
 
 
 class GastoPorDiaSerializer(serializers.Serializer):
@@ -67,7 +98,7 @@ class GastoPorDiaSerializer(serializers.Serializer):
 
 # ─── Deudas ───────────────────────────────────────────────────────────────────
 
-class CategoriaDeudaSerializer(serializers.ModelSerializer):
+class CategoriaDeudaSerializer(_CategoriaUniquePorOrgMixin, serializers.ModelSerializer):
     class Meta:
         model = CategoriaDeuda
         fields = ['id', 'nombre', 'color', 'icono', 'tipo_amortizacion', 'creado']
@@ -89,6 +120,7 @@ class DeudaSerializer(serializers.ModelSerializer):
             'creado_por', 'creado', 'actualizado',
         ]
         read_only_fields = ['id', 'creado_por', 'creado', 'actualizado']
+        extra_kwargs = {'saldo_actual': {'required': False}}
 
     def validate(self, attrs):
         fecha_inicio = attrs.get('fecha_inicio')
@@ -98,6 +130,9 @@ class DeudaSerializer(serializers.ModelSerializer):
         monto_original = attrs.get('monto_original')
         if monto_original is not None and monto_original <= 0:
             raise serializers.ValidationError({'monto_original': 'Debe ser mayor a cero.'})
+        # Una deuda nueva empieza debiendo el monto original si no se indica otro saldo
+        if self.instance is None and attrs.get('saldo_actual') is None:
+            attrs['saldo_actual'] = monto_original
         return attrs
 
 

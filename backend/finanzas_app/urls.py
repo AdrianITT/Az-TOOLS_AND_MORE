@@ -11,6 +11,7 @@ router.register(r'categorias-deudas', views.CategoriaDeudaViewSet, basename='cat
 router.register(r'deudas', views.DeudaViewSet, basename='deuda')
 
 urlpatterns = [
+    path('recibos/analizar/', views.AnalizarRecibosView.as_view(), name='analizar-recibos'),
     path('dashboard/', views.FinanzasDashboardView.as_view(), name='finanzas-dashboard'),
     path('dashboard/detalle-mes/', views.DetalleMesView.as_view(), name='finanzas-detalle-mes'),
     path('resumen-por-categoria/', views.ResumenPorCategoriaView.as_view(), name='resumen-por-categoria'),

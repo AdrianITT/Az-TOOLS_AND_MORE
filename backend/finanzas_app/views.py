@@ -1,6 +1,7 @@
 from rest_framework import viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
@@ -42,6 +43,7 @@ class IngresoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 
     queryset = Ingreso.objects.all()
     serializer_class = IngresoSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
@@ -78,6 +80,7 @@ class GastoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 
     queryset = Gasto.objects.all()
     serializer_class = GastoSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
@@ -99,6 +102,41 @@ class GastoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         if self.request.query_params.get('sin_pago_deuda') == 'true':
             qs = qs.filter(pagos_deuda__isnull=True)
         return qs
+
+
+class AnalizarRecibosView(APIView):
+    """OCR de recibos/tickets: recibe imágenes, devuelve datos extraídos para
+    que el usuario los revise y confirme. No guarda nada."""
+
+    permission_classes = [IsAuthenticated]
+
+    MAX_IMAGENES = 10
+    MAX_TAMANO_MB = 5
+
+    def post(self, request):
+        from io import BytesIO
+        from PIL import Image, UnidentifiedImageError
+        from .services.ocr_recibos import analizar_recibo
+
+        imagenes = request.FILES.getlist('imagenes')
+        if not imagenes:
+            raise ValidationError({'imagenes': 'Subí al menos una imagen.'})
+        if len(imagenes) > self.MAX_IMAGENES:
+            raise ValidationError({'imagenes': f'Máximo {self.MAX_IMAGENES} imágenes por tanda.'})
+
+        contenidos = []
+        for f in imagenes:
+            if f.size > self.MAX_TAMANO_MB * 1024 * 1024:
+                raise ValidationError({'imagenes': f'"{f.name}" supera los {self.MAX_TAMANO_MB} MB.'})
+            data = f.read()
+            try:
+                Image.open(BytesIO(data)).verify()
+            except (UnidentifiedImageError, OSError):
+                raise ValidationError({'imagenes': f'"{f.name}" no es una imagen válida.'})
+            contenidos.append((data, f.name))
+
+        resultados = [analizar_recibo(data, nombre) for data, nombre in contenidos]
+        return Response(resultados)
 
 
 class FinanzasDashboardView(APIView):
@@ -230,6 +268,10 @@ class DetalleMesView(APIView):
             organization=org, fecha__gte=mes_start, fecha__lte=mes_end
         ).select_related('categoria')
 
+        def url_comprobante(mov):
+            # Relativa a propósito: válida desde LAN y Tailscale por igual
+            return mov.comprobante.url if mov.comprobante else None
+
         movimientos = [
             {
                 'tipo': 'ingreso',
@@ -237,6 +279,7 @@ class DetalleMesView(APIView):
                 'categoria': i.categoria.nombre,
                 'monto': i.monto,
                 'descripcion': i.descripcion,
+                'comprobante': url_comprobante(i),
             }
             for i in ingresos
         ] + [
@@ -246,6 +289,7 @@ class DetalleMesView(APIView):
                 'categoria': g.categoria.nombre,
                 'monto': g.monto,
                 'descripcion': g.descripcion,
+                'comprobante': url_comprobante(g),
             }
             for g in gastos
         ]

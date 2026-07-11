@@ -20,6 +20,8 @@ urlpatterns = [
     path('organizaciones/registro/', views.RegistroOrganizacionView.as_view(), name='registro_organizacion'),
     path('organizacion/', views.OrganizacionActualView.as_view(), name='organizacion_actual'),
     path('invitaciones/aceptar/', views.AceptarInvitacionView.as_view(), name='aceptar_invitacion'),
+    path('publico/cotizaciones/<str:token>/', views.CotizacionPublicaView.as_view(), name='cotizacion_publica'),
+    path('publico/cotizaciones/<str:token>/pdf/', views.CotizacionPublicaPdfView.as_view(), name='cotizacion_publica_pdf'),
     path('reportes/resumen/', views.ReporteResumenView.as_view(), name='reporte_resumen'),
     path('', include(router.urls)),
 ]

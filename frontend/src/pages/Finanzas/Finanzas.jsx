@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, Legend,
 } from 'recharts'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
@@ -11,13 +12,15 @@ import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Modal } from '../../components/ui/Modal'
-import { Trash2, Plus, Wallet, Eye, CreditCard, AlertTriangle, CheckSquare, Square } from 'lucide-react'
+import { Trash2, Plus, Wallet, Eye, AlertTriangle, CheckSquare, Square, ChevronDown, ChevronRight, Settings, Camera } from 'lucide-react'
+import { MasOpciones, InputMonto } from '../../components/ui/FormExtras'
+import { EscanearRecibos } from './EscanearRecibos'
 import styles from '../shared-form.module.css'
 
-const CATEGORIA_COLORS = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e']
+const monedaFormatter = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })
 
 function formatMoneda(value) {
-  return `$${Number(value ?? 0).toFixed(2)}`
+  return monedaFormatter.format(Number(value ?? 0))
 }
 
 function formatFechaCorta(fechaISO) {
@@ -26,23 +29,68 @@ function formatFechaCorta(fechaISO) {
   return `${day}/${month}/${year}`
 }
 
+function nombreMes(mesISO) {
+  if (!mesISO) return ''
+  const [year, month] = mesISO.split('-')
+  return new Date(Number(year), Number(month) - 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })
+}
+
+function nombreMesCorto(mesISO) {
+  if (!mesISO) return ''
+  const [year, month] = mesISO.split('-')
+  return new Date(Number(year), Number(month) - 1).toLocaleDateString('es-MX', { month: 'short' })
+}
+
+function deltaPorcentaje(actual, anterior) {
+  const a = parseFloat(actual ?? 0)
+  const b = parseFloat(anterior ?? 0)
+  if (!b) return null
+  return ((a - b) / Math.abs(b)) * 100
+}
+
 const TABS = ['Ingresos', 'Gastos', 'Deudas', 'Dashboard']
 const NUEVA_CATEGORIA = '__nueva__'
 
-const emptyIngresoForm = { categoria: '', monto: '', fecha: '', descripcion: '' }
-const emptyGastoForm = { categoria: '', monto: '', fecha: '', descripcion: '' }
-const emptyDeudaForm = {
-  categoria: '',
-  acreedor: '',
-  monto_original: '',
-  fecha_inicio: '',
-  fecha_vencimiento: '',
-  tasa_interes_anual: '',
-  pago_periodico: '',
-  dia_pago: '',
-  notas: '',
+function hoyISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-const emptyPagoForm = { monto: '', fecha: '', notas: '', gastos_cubiertos_ids: [] }
+
+function ultimaCategoria(tipo) {
+  return localStorage.getItem(`finanzas:ultimaCategoria:${tipo}`) ?? ''
+}
+
+function recordarCategoria(tipo, id) {
+  if (id) localStorage.setItem(`finanzas:ultimaCategoria:${tipo}`, String(id))
+}
+
+function nuevoMovimientoForm(tipo) {
+  return { categoria: ultimaCategoria(tipo), monto: '', fecha: hoyISO(), descripcion: '' }
+}
+
+function nuevaDeudaForm() {
+  return {
+    categoria: ultimaCategoria('deudas'),
+    acreedor: '',
+    monto_original: '',
+    fecha_inicio: hoyISO(),
+    fecha_vencimiento: '',
+    tasa_interes_anual: '',
+    pago_periodico: '',
+    dia_pago: '',
+    notas: '',
+  }
+}
+
+function nuevoPagoForm() {
+  return { monto: '', fecha: hoyISO(), notas: '', gastos_cubiertos_ids: [] }
+}
+
+const HINT_TIPO_AMORTIZACION = {
+  revolvente: 'Revolvente: el saldo sube con nuevos cargos y baja con pagos; no tiene fecha de fin.',
+  cuotas_fijas: 'Cuotas fijas: se paga una cuota fija periódica hasta liquidar en una fecha conocida.',
+  cuenta_por_pagar: 'Cuenta por pagar: normalmente sin interés, con una fecha de vencimiento concreta.',
+}
 
 const TIPO_AMORTIZACION_OPTIONS = [
   { value: 'revolvente', label: 'Revolvente (tarjeta, línea de crédito)' },
@@ -53,95 +101,68 @@ const TIPO_AMORTIZACION_OPTIONS = [
 const ESTADO_LABELS = { activa: 'Activa', pagada: 'Pagada', vencida: 'Vencida' }
 const ESTADO_COLORS = { activa: '#27ae60', pagada: '#7f8c8d', vencida: '#e74c3c' }
 
-function CategoriaQuickForm({ onSubmit, onCancel }) {
+/** Mini-formulario inline para crear una categoría sin desmontar el formulario padre.
+ *  Es un <div> (no <form>) porque vive anidado dentro del formulario del movimiento. */
+function CategoriaInline({ conTipo = false, onCrear, onCancelar }) {
   const [nombre, setNombre] = useState('')
-  const [color, setColor] = useState('#3498db')
-  const [submitting, setSubmitting] = useState(false)
+  const [color, setColor] = useState(conTipo ? '#e74c3c' : '#3498db')
+  const [tipo, setTipo] = useState('cuotas_fijas')
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  async function handleSubmit(event) {
-    event.preventDefault()
+  async function crear() {
+    if (!nombre.trim()) {
+      setError('Escribí un nombre para la categoría')
+      return
+    }
     setError('')
-    setSubmitting(true)
+    setSaving(true)
     try {
-      await onSubmit({ nombre, color })
+      await onCrear(conTipo ? { nombre, color, tipo_amortizacion: tipo } : { nombre, color })
     } catch (err) {
       setError(getErrorMessage(err, 'No se pudo crear la categoría'))
     } finally {
-      setSubmitting(false)
+      setSaving(false)
     }
   }
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit} style={{ marginTop: 4 }}>
-      <div className={styles.row}>
-        <Field label="Nombre de la categoría">
-          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} required autoFocus />
-        </Field>
-        <Field label="Color">
-          <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
-        </Field>
-      </div>
-      {error && <p className={styles.error}>{error}</p>}
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <Button type="submit" disabled={submitting}>
-          Crear categoría
+    <div style={{
+      border: '1.5px dashed var(--color-primary, #3498db)', borderRadius: 8, padding: 12,
+      display: 'flex', flexDirection: 'column', gap: 10,
+    }}>
+      <strong style={{ fontSize: 13 }}>Nueva categoría</strong>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Input
+          value={nombre}
+          onChange={(e) => setNombre(e.target.value)}
+          placeholder="Nombre de la categoría"
+          autoFocus
+          style={{ flex: 2, minWidth: 140 }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              crear()
+            }
+          }}
+        />
+        <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 48, height: 38, padding: 2, flexShrink: 0 }} />
+        {conTipo && (
+          <Select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ flex: 2, minWidth: 200 }}>
+            {TIPO_AMORTIZACION_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </Select>
+        )}
+        <Button type="button" onClick={crear} disabled={saving}>
+          Crear
         </Button>
-        <Button type="button" variant="secondary" onClick={onCancel}>
+        <Button type="button" variant="secondary" onClick={onCancelar}>
           Cancelar
         </Button>
       </div>
-    </form>
-  )
-}
-
-function CategoriaDeudaQuickForm({ onSubmit, onCancel }) {
-  const [nombre, setNombre] = useState('')
-  const [color, setColor] = useState('#e74c3c')
-  const [tipoAmortizacion, setTipoAmortizacion] = useState('cuotas_fijas')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState('')
-
-  async function handleSubmit(event) {
-    event.preventDefault()
-    setError('')
-    setSubmitting(true)
-    try {
-      await onSubmit({ nombre, color, tipo_amortizacion: tipoAmortizacion })
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo crear la categoría'))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <form className={styles.form} onSubmit={handleSubmit} style={{ marginTop: 4 }}>
-      <div className={styles.row}>
-        <Field label="Nombre de la categoría">
-          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} required autoFocus />
-        </Field>
-        <Field label="Color">
-          <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
-        </Field>
-      </div>
-      <Field label="Tipo de amortización">
-        <Select value={tipoAmortizacion} onChange={(e) => setTipoAmortizacion(e.target.value)}>
-          {TIPO_AMORTIZACION_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
-      </Field>
       {error && <p className={styles.error}>{error}</p>}
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <Button type="submit" disabled={submitting}>
-          Crear categoría
-        </Button>
-        <Button type="button" variant="secondary" onClick={onCancel}>
-          Cancelar
-        </Button>
-      </div>
-    </form>
+    </div>
   )
 }
 
@@ -184,6 +205,19 @@ function CategoriasManager({ categorias, onDeleteRequest }) {
   )
 }
 
+function MiniaturaComprobante({ url }) {
+  if (!url) return <span style={{ color: '#ccc' }}>—</span>
+  return (
+    <a href={url} target="_blank" rel="noreferrer" title="Ver comprobante">
+      <img
+        src={url}
+        alt="comprobante"
+        style={{ width: 34, height: 44, objectFit: 'cover', borderRadius: 4, display: 'block', border: '1px solid #ddd' }}
+      />
+    </a>
+  )
+}
+
 function CategoriaBubble({ nombre, color }) {
   return (
     <span style={{
@@ -194,6 +228,92 @@ function CategoriaBubble({ nombre, color }) {
       <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} />
       {nombre}
     </span>
+  )
+}
+
+function StatTile({ label, value, delta, subeEsBueno = true, notaSinDelta = null }) {
+  let deltaNode = null
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const sube = delta >= 0
+    const bueno = subeEsBueno ? sube : !sube
+    deltaNode = (
+      <span style={{ color: bueno ? '#27ae60' : '#e74c3c', fontSize: 13, fontWeight: 600 }}>
+        {sube ? '▲' : '▼'} {Math.abs(delta).toFixed(0)}% vs mes anterior
+      </span>
+    )
+  } else if (notaSinDelta) {
+    deltaNode = <span style={{ color: '#888', fontSize: 13 }}>{notaSinDelta}</span>
+  }
+  return (
+    <Card>
+      <div style={{ textAlign: 'center' }}>
+        <h4 style={{ margin: '0 0 6px', color: '#666', fontWeight: 600 }}>{label}</h4>
+        <p style={{ fontSize: 22, fontWeight: 'bold', margin: '4px 0' }}>{value}</p>
+        {deltaNode}
+      </div>
+    </Card>
+  )
+}
+
+function SeccionColapsable({ titulo, resumen, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Card style={{ marginTop: 16 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left',
+          font: 'inherit', color: 'inherit', gap: 12,
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          <strong style={{ fontSize: 15 }}>{titulo}</strong>
+        </span>
+        {!open && resumen && (
+          <span style={{ color: '#888', fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {resumen}
+          </span>
+        )}
+      </button>
+      {open && <div style={{ marginTop: 16 }}>{children}</div>}
+    </Card>
+  )
+}
+
+function BarrasCategoria({ datos, colorBarra, colorPorNombre = {} }) {
+  const filas = datos.filter((d) => parseFloat(d.total) > 0)
+  if (filas.length === 0) return <p style={{ color: '#888' }}>Sin datos en este período.</p>
+  const max = Math.max(...filas.map((d) => parseFloat(d.total)))
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {filas.map((d) => (
+        <div
+          key={d.categoria}
+          style={{ display: 'grid', gridTemplateColumns: 'minmax(110px, 170px) 1fr 170px', alignItems: 'center', gap: 10 }}
+        >
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14 }}>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+              background: d.color ?? colorPorNombre[d.categoria] ?? colorBarra,
+            }} />
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.categoria}</span>
+          </span>
+          <div style={{ background: 'rgba(0,0,0,0.06)', borderRadius: 4, height: 14 }}>
+            <div style={{
+              width: `${(parseFloat(d.total) / max) * 100}%`,
+              background: colorBarra, height: '100%', borderRadius: 4, minWidth: 2,
+            }} />
+          </div>
+          <span style={{ fontSize: 13, textAlign: 'right' }}>
+            {formatMoneda(d.total)}
+            {d.porcentaje !== undefined && <span style={{ color: '#888' }}> · {Number(d.porcentaje).toFixed(0)}%</span>}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -215,8 +335,12 @@ export function Finanzas() {
   const [loadingDetalle, setLoadingDetalle] = useState(false)
   const [errorDetalle, setErrorDetalle] = useState('')
 
-  const [ingresoForm, setIngresoForm] = useState(emptyIngresoForm)
-  const [gastoForm, setGastoForm] = useState(emptyGastoForm)
+  const [ingresoForm, setIngresoForm] = useState(() => nuevoMovimientoForm('ingresos'))
+  const [gastoForm, setGastoForm] = useState(() => nuevoMovimientoForm('gastos'))
+  const [showFormIngreso, setShowFormIngreso] = useState(false)
+  const [showFormGasto, setShowFormGasto] = useState(false)
+  const [showFormDeuda, setShowFormDeuda] = useState(false)
+  const [escanearTipo, setEscanearTipo] = useState(null) // 'gasto' | 'ingreso' | null
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
   const [loading, setLoading] = useState(true)
@@ -235,7 +359,7 @@ export function Finanzas() {
   const [deudas, setDeudas] = useState([])
   const [deudaResumen, setDeudaResumen] = useState({ total_deuda: 0, por_categoria: [] })
   const [proximosVencimientos, setProximosVencimientos] = useState([])
-  const [deudaForm, setDeudaForm] = useState(emptyDeudaForm)
+  const [deudaForm, setDeudaForm] = useState(() => nuevaDeudaForm())
   const [creatingCategoriaDeuda, setCreatingCategoriaDeuda] = useState(false)
   const [showCategoriasDeuda, setShowCategoriasDeuda] = useState(false)
   const [confirmDeleteDeuda, setConfirmDeleteDeuda] = useState(null)
@@ -243,7 +367,7 @@ export function Finanzas() {
 
   // Pago modal state
   const [pagoModal, setPagoModal] = useState(null)
-  const [pagoForm, setPagoForm] = useState(emptyPagoForm)
+  const [pagoForm, setPagoForm] = useState(() => nuevoPagoForm())
   const [pagoHistorial, setPagoHistorial] = useState([])
   const [gastosDisponibles, setGastosDisponibles] = useState([])
   const [submittingPago, setSubmittingPago] = useState(false)
@@ -399,7 +523,9 @@ export function Finanzas() {
     setSubmitting(true)
     try {
       await api.post('/finanzas/ingresos/', ingresoForm)
-      setIngresoForm(emptyIngresoForm)
+      recordarCategoria('ingresos', ingresoForm.categoria)
+      // Conserva categoría y fecha para captura en ráfaga; limpia monto y descripción
+      setIngresoForm((f) => ({ ...f, monto: '', descripcion: '' }))
       load()
       flashSuccess('Ingreso agregado')
     } catch (err) {
@@ -415,7 +541,8 @@ export function Finanzas() {
     setSubmitting(true)
     try {
       await api.post('/finanzas/gastos/', gastoForm)
-      setGastoForm(emptyGastoForm)
+      recordarCategoria('gastos', gastoForm.categoria)
+      setGastoForm((f) => ({ ...f, monto: '', descripcion: '' }))
       load()
       flashSuccess('Gasto agregado')
     } catch (err) {
@@ -437,7 +564,9 @@ export function Finanzas() {
       if (!payload.dia_pago) delete payload.dia_pago
       if (!payload.notas) delete payload.notas
       await api.post('/finanzas/deudas/', payload)
-      setDeudaForm(emptyDeudaForm)
+      recordarCategoria('deudas', deudaForm.categoria)
+      setDeudaForm(nuevaDeudaForm())
+      setShowFormDeuda(false)
       load()
       flashSuccess('Deuda registrada')
     } catch (err) {
@@ -484,7 +613,7 @@ export function Finanzas() {
 
   async function abrirPagoModal(deuda) {
     setPagoModal(deuda)
-    setPagoForm(emptyPagoForm)
+    setPagoForm(nuevoPagoForm())
     setErrorPago('')
     setPagoHistorial([])
     setGastosDisponibles([])
@@ -513,7 +642,7 @@ export function Finanzas() {
       ])
       setPagoHistorial(historial.results ?? historial)
       setGastosDisponibles(gastosDisp.results ?? gastosDisp)
-      setPagoForm(emptyPagoForm)
+      setPagoForm(nuevoPagoForm())
       load()
       flashSuccess('Pago registrado')
     } catch (err) {
@@ -541,6 +670,26 @@ export function Finanzas() {
 
   const categoriaDeudaSeleccionada = categoriaDeudas.find((c) => String(c.id) === String(deudaForm.categoria))
   const tipoDeudaSeleccionada = categoriaDeudaSeleccionada?.tipo_amortizacion ?? null
+
+  // Derivados del dashboard: el endpoint devuelve los 12 meses del más reciente al más antiguo
+  const mesActual = dashboard[0] ?? null
+  const mesAnterior = dashboard[1] ?? null
+  const balanceMes = parseFloat(mesActual?.ganancia ?? 0)
+  const deltaBalance = deltaPorcentaje(mesActual?.ganancia, mesAnterior?.ganancia)
+  const deltaIngresos = deltaPorcentaje(mesActual?.total_ingresos, mesAnterior?.total_ingresos)
+  const deltaGastos = deltaPorcentaje(mesActual?.total_gastos, mesAnterior?.total_gastos)
+  const deudasActivas = deudas.filter((d) => d.estado === 'activa').length
+  const vencUrgentes = proximosVencimientos.filter((v) => v.dias_restantes !== null && v.dias_restantes <= 7)
+  const tendenciaData = [...dashboard].reverse().map((d) => ({
+    mes: d.mes,
+    Ingresos: parseFloat(d.total_ingresos),
+    Gastos: parseFloat(d.total_gastos),
+  }))
+  const colorGastoPorNombre = Object.fromEntries(categoriaGastos.map((c) => [c.nombre, c.color]))
+  const colorIngresoPorNombre = Object.fromEntries(categoriaIngresos.map((c) => [c.nombre, c.color]))
+  const mayorGasto = resumenGastosCategoria.find((r) => parseFloat(r.total) > 0)
+  const mayorIngreso = resumenCategoria.find((r) => parseFloat(r.total) > 0)
+  const dashboardVacio = ingresos.length === 0 && gastos.length === 0 && deudas.length === 0
 
   return (
     <div>
@@ -573,28 +722,25 @@ export function Finanzas() {
       {/* Tab: Ingresos */}
       {activeTab === 'Ingresos' && (
         <div>
-          {categoriaIngresos.length === 0 && !creatingCategoriaIngreso ? (
+          {!showFormIngreso && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginBottom: 16 }}>
+              <Button variant="secondary" onClick={() => setEscanearTipo('ingreso')}>
+                <Camera size={16} style={{ marginRight: 8 }} /> Escanear recibos
+              </Button>
+              <Button onClick={() => setShowFormIngreso(true)}>
+                <Plus size={16} style={{ marginRight: 8 }} /> Registrar ingreso
+              </Button>
+            </div>
+          )}
+
+          {showFormIngreso && (
             <Card style={{ marginBottom: 20 }}>
-              <EmptyState
-                icon={Wallet}
-                title="Todavía no tenés categorías de ingresos"
-                description="Creá una categoría (ej. Ventas, Servicios) para poder registrar tu primer ingreso."
-                action={<Button onClick={() => setCreatingCategoriaIngreso(true)}>Crear categoría</Button>}
-              />
-            </Card>
-          ) : creatingCategoriaIngreso ? (
-            <Card style={{ marginBottom: 20 }}>
-              <h3>Nueva categoría de ingresos</h3>
-              <CategoriaQuickForm
-                onSubmit={handleCrearCategoriaIngreso}
-                onCancel={() => setCreatingCategoriaIngreso(false)}
-              />
-            </Card>
-          ) : (
-            <Card style={{ marginBottom: 20 }}>
-              <h3>Nuevo Ingreso</h3>
+              <h3 style={{ marginTop: 0 }}>Nuevo Ingreso</h3>
               <form className={styles.form} onSubmit={handleAddIngreso}>
                 <div className={styles.row}>
+                  <Field label="Monto">
+                    <InputMonto value={ingresoForm.monto} onChange={updateIngresoForm('monto')} required autoFocus />
+                  </Field>
                   <Field label="Categoría">
                     <Select value={ingresoForm.categoria} onChange={updateIngresoForm('categoria')} required>
                       <option value="">Seleccionar…</option>
@@ -606,54 +752,60 @@ export function Finanzas() {
                       <option value={NUEVA_CATEGORIA}>+ Nueva categoría</option>
                     </Select>
                   </Field>
-                  <Field label="Monto">
-                    <Input type="number" step="0.01" value={ingresoForm.monto} onChange={updateIngresoForm('monto')} required />
-                  </Field>
                 </div>
+                {creatingCategoriaIngreso && (
+                  <CategoriaInline
+                    onCrear={handleCrearCategoriaIngreso}
+                    onCancelar={() => setCreatingCategoriaIngreso(false)}
+                  />
+                )}
                 <div className={styles.row}>
                   <Field label="Fecha">
                     <Input type="date" value={ingresoForm.fecha} onChange={updateIngresoForm('fecha')} required />
                   </Field>
                 </div>
-                <Field label="Descripción">
-                  <Input value={ingresoForm.descripcion} onChange={updateIngresoForm('descripcion')} />
-                </Field>
-                <Button type="submit" disabled={submitting}>
-                  <Plus size={16} style={{ marginRight: '8px' }} /> Agregar Ingreso
-                </Button>
+                <MasOpciones etiqueta="Más opciones (descripción)">
+                  <Field label="Descripción">
+                    <Input value={ingresoForm.descripcion} onChange={updateIngresoForm('descripcion')} placeholder="Opcional" />
+                  </Field>
+                </MasOpciones>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Button type="submit" disabled={submitting}>
+                    <Plus size={16} style={{ marginRight: '8px' }} /> Registrar ingreso
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowFormIngreso(false)}>
+                    Cerrar
+                  </Button>
+                </div>
               </form>
             </Card>
           )}
 
-          {categoriaIngresos.length > 0 && (
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong>Categorías de ingresos</strong>
-                <Button variant="secondary" onClick={() => setShowCategoriasIngreso((s) => !s)}>
-                  {showCategoriasIngreso ? 'Ocultar' : 'Gestionar categorías'}
-                </Button>
-              </div>
-              {showCategoriasIngreso && (
-                <div style={{ marginTop: 12 }}>
-                  <CategoriasManager
-                    categorias={categoriaIngresos}
-                    onDeleteRequest={(categoria) => setConfirmDeleteCategoria({ tipo: 'ingresos', categoria })}
-                  />
-                </div>
-              )}
-            </Card>
-          )}
-
           <Card>
-            <h3>Total Ingresos: ${totalIngresos.toFixed(2)}</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>Total Ingresos: {formatMoneda(totalIngresos)}</h3>
+              <Button variant="secondary" onClick={() => setShowCategoriasIngreso((s) => !s)}>
+                <Settings size={14} style={{ marginRight: 6 }} />
+                {showCategoriasIngreso ? 'Ocultar categorías' : 'Gestionar categorías'}
+              </Button>
+            </div>
+            {showCategoriasIngreso && (
+              <div style={{ marginBottom: 12 }}>
+                <CategoriasManager
+                  categorias={categoriaIngresos}
+                  onDeleteRequest={(categoria) => setConfirmDeleteCategoria({ tipo: 'ingresos', categoria })}
+                />
+              </div>
+            )}
             <Table
               rowKey={(i) => i.id}
               emptyMessage="Sin ingresos"
               columns={[
                 { key: 'fecha', header: 'Fecha' },
                 { key: 'categoria_nombre', header: 'Categoría' },
-                { key: 'monto', header: 'Monto', render: (i) => `$${i.monto}` },
+                { key: 'monto', header: 'Monto', render: (i) => formatMoneda(i.monto) },
                 { key: 'descripcion', header: 'Descripción' },
+                { key: 'comprobante', header: 'Recibo', render: (i) => <MiniaturaComprobante url={i.comprobante} /> },
                 {
                   key: 'acciones',
                   header: '',
@@ -673,25 +825,25 @@ export function Finanzas() {
       {/* Tab: Gastos */}
       {activeTab === 'Gastos' && (
         <div>
-          {categoriaGastos.length === 0 && !creatingCategoriaGasto ? (
+          {!showFormGasto && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginBottom: 16 }}>
+              <Button variant="secondary" onClick={() => setEscanearTipo('gasto')}>
+                <Camera size={16} style={{ marginRight: 8 }} /> Escanear recibos
+              </Button>
+              <Button onClick={() => setShowFormGasto(true)}>
+                <Plus size={16} style={{ marginRight: 8 }} /> Registrar gasto
+              </Button>
+            </div>
+          )}
+
+          {showFormGasto && (
             <Card style={{ marginBottom: 20 }}>
-              <EmptyState
-                icon={Wallet}
-                title="Todavía no tenés categorías de gastos"
-                description="Creá una categoría (ej. Operativo, Marketing) para poder registrar tu primer gasto."
-                action={<Button onClick={() => setCreatingCategoriaGasto(true)}>Crear categoría</Button>}
-              />
-            </Card>
-          ) : creatingCategoriaGasto ? (
-            <Card style={{ marginBottom: 20 }}>
-              <h3>Nueva categoría de gastos</h3>
-              <CategoriaQuickForm onSubmit={handleCrearCategoriaGasto} onCancel={() => setCreatingCategoriaGasto(false)} />
-            </Card>
-          ) : (
-            <Card style={{ marginBottom: 20 }}>
-              <h3>Nuevo Gasto</h3>
+              <h3 style={{ marginTop: 0 }}>Nuevo Gasto</h3>
               <form className={styles.form} onSubmit={handleAddGasto}>
                 <div className={styles.row}>
+                  <Field label="Monto">
+                    <InputMonto value={gastoForm.monto} onChange={updateGastoForm('monto')} required autoFocus />
+                  </Field>
                   <Field label="Categoría">
                     <Select value={gastoForm.categoria} onChange={updateGastoForm('categoria')} required>
                       <option value="">Seleccionar…</option>
@@ -703,54 +855,60 @@ export function Finanzas() {
                       <option value={NUEVA_CATEGORIA}>+ Nueva categoría</option>
                     </Select>
                   </Field>
-                  <Field label="Monto">
-                    <Input type="number" step="0.01" value={gastoForm.monto} onChange={updateGastoForm('monto')} required />
-                  </Field>
                 </div>
+                {creatingCategoriaGasto && (
+                  <CategoriaInline
+                    onCrear={handleCrearCategoriaGasto}
+                    onCancelar={() => setCreatingCategoriaGasto(false)}
+                  />
+                )}
                 <div className={styles.row}>
                   <Field label="Fecha">
                     <Input type="date" value={gastoForm.fecha} onChange={updateGastoForm('fecha')} required />
                   </Field>
                 </div>
-                <Field label="Descripción">
-                  <Input value={gastoForm.descripcion} onChange={updateGastoForm('descripcion')} />
-                </Field>
-                <Button type="submit" disabled={submitting}>
-                  <Plus size={16} style={{ marginRight: '8px' }} /> Agregar Gasto
-                </Button>
+                <MasOpciones etiqueta="Más opciones (descripción)">
+                  <Field label="Descripción">
+                    <Input value={gastoForm.descripcion} onChange={updateGastoForm('descripcion')} placeholder="Opcional" />
+                  </Field>
+                </MasOpciones>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Button type="submit" disabled={submitting}>
+                    <Plus size={16} style={{ marginRight: '8px' }} /> Registrar gasto
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowFormGasto(false)}>
+                    Cerrar
+                  </Button>
+                </div>
               </form>
             </Card>
           )}
 
-          {categoriaGastos.length > 0 && (
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong>Categorías de gastos</strong>
-                <Button variant="secondary" onClick={() => setShowCategoriasGasto((s) => !s)}>
-                  {showCategoriasGasto ? 'Ocultar' : 'Gestionar categorías'}
-                </Button>
-              </div>
-              {showCategoriasGasto && (
-                <div style={{ marginTop: 12 }}>
-                  <CategoriasManager
-                    categorias={categoriaGastos}
-                    onDeleteRequest={(categoria) => setConfirmDeleteCategoria({ tipo: 'gastos', categoria })}
-                  />
-                </div>
-              )}
-            </Card>
-          )}
-
           <Card>
-            <h3>Total Gastos: ${totalGastos.toFixed(2)}</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>Total Gastos: {formatMoneda(totalGastos)}</h3>
+              <Button variant="secondary" onClick={() => setShowCategoriasGasto((s) => !s)}>
+                <Settings size={14} style={{ marginRight: 6 }} />
+                {showCategoriasGasto ? 'Ocultar categorías' : 'Gestionar categorías'}
+              </Button>
+            </div>
+            {showCategoriasGasto && (
+              <div style={{ marginBottom: 12 }}>
+                <CategoriasManager
+                  categorias={categoriaGastos}
+                  onDeleteRequest={(categoria) => setConfirmDeleteCategoria({ tipo: 'gastos', categoria })}
+                />
+              </div>
+            )}
             <Table
               rowKey={(g) => g.id}
               emptyMessage="Sin gastos"
               columns={[
                 { key: 'fecha', header: 'Fecha' },
                 { key: 'categoria_nombre', header: 'Categoría' },
-                { key: 'monto', header: 'Monto', render: (g) => `$${g.monto}` },
+                { key: 'monto', header: 'Monto', render: (g) => formatMoneda(g.monto) },
                 { key: 'descripcion', header: 'Descripción' },
+                { key: 'comprobante', header: 'Recibo', render: (g) => <MiniaturaComprobante url={g.comprobante} /> },
                 {
                   key: 'acciones',
                   header: '',
@@ -770,28 +928,27 @@ export function Finanzas() {
       {/* Tab: Deudas */}
       {activeTab === 'Deudas' && (
         <div>
-          {categoriaDeudas.length === 0 && !creatingCategoriaDeuda ? (
+          {!showFormDeuda && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+              <Button onClick={() => setShowFormDeuda(true)}>
+                <Plus size={16} style={{ marginRight: 8 }} /> Registrar deuda
+              </Button>
+            </div>
+          )}
+
+          {showFormDeuda && (
             <Card style={{ marginBottom: 20 }}>
-              <EmptyState
-                icon={CreditCard}
-                title="Todavía no tenés categorías de deuda"
-                description="Las categorías predeterminadas se crean al registrar la organización. También podés crear las tuyas."
-                action={<Button onClick={() => setCreatingCategoriaDeuda(true)}>Crear categoría</Button>}
-              />
-            </Card>
-          ) : creatingCategoriaDeuda ? (
-            <Card style={{ marginBottom: 20 }}>
-              <h3>Nueva categoría de deuda</h3>
-              <CategoriaDeudaQuickForm
-                onSubmit={handleCrearCategoriaDeuda}
-                onCancel={() => setCreatingCategoriaDeuda(false)}
-              />
-            </Card>
-          ) : (
-            <Card style={{ marginBottom: 20 }}>
-              <h3>Nueva Deuda</h3>
+              <h3 style={{ marginTop: 0 }}>Nueva Deuda</h3>
               <form className={styles.form} onSubmit={handleAddDeuda}>
                 <div className={styles.row}>
+                  <Field label="Monto original">
+                    <InputMonto
+                      value={deudaForm.monto_original}
+                      onChange={updateDeudaForm('monto_original')}
+                      required
+                      autoFocus
+                    />
+                  </Field>
                   <Field label="Categoría">
                     <Select value={deudaForm.categoria} onChange={updateDeudaForm('categoria')} required>
                       <option value="">Seleccionar…</option>
@@ -803,23 +960,26 @@ export function Finanzas() {
                       <option value={NUEVA_CATEGORIA}>+ Nueva categoría</option>
                     </Select>
                   </Field>
+                </div>
+                {creatingCategoriaDeuda && (
+                  <CategoriaInline
+                    conTipo
+                    onCrear={handleCrearCategoriaDeuda}
+                    onCancelar={() => setCreatingCategoriaDeuda(false)}
+                  />
+                )}
+                {tipoDeudaSeleccionada && (
+                  <p style={{ color: '#888', fontSize: 13, margin: '-6px 0 0' }}>
+                    {HINT_TIPO_AMORTIZACION[tipoDeudaSeleccionada]}
+                  </p>
+                )}
+                <div className={styles.row}>
                   <Field label="Acreedor">
                     <Input
                       value={deudaForm.acreedor}
                       onChange={updateDeudaForm('acreedor')}
                       required
                       placeholder="Banco, proveedor, persona…"
-                    />
-                  </Field>
-                </div>
-                <div className={styles.row}>
-                  <Field label="Monto original">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={deudaForm.monto_original}
-                      onChange={updateDeudaForm('monto_original')}
-                      required
                     />
                   </Field>
                   <Field label="Fecha de inicio">
@@ -832,7 +992,7 @@ export function Finanzas() {
                   </Field>
                 </div>
 
-                {/* Campos condicionales según tipo_amortizacion */}
+                {/* Campos condicionales según tipo_amortizacion: definen la deuda, van visibles */}
                 {tipoDeudaSeleccionada && tipoDeudaSeleccionada !== 'revolvente' && (
                   <div className={styles.row}>
                     <Field label="Fecha de vencimiento">
@@ -855,92 +1015,95 @@ export function Finanzas() {
                     )}
                   </div>
                 )}
-                {tipoDeudaSeleccionada && tipoDeudaSeleccionada !== 'cuenta_por_pagar' && (
-                  <div className={styles.row}>
-                    <Field label="Tasa interés anual (%)">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={deudaForm.tasa_interes_anual}
-                        onChange={updateDeudaForm('tasa_interes_anual')}
-                        placeholder="Ej. 24.5"
-                      />
-                    </Field>
-                    <Field label="Día de pago (1-31)">
-                      <Input
-                        type="number"
-                        min="1"
-                        max="31"
-                        value={deudaForm.dia_pago}
-                        onChange={updateDeudaForm('dia_pago')}
-                        placeholder="Ej. 15"
-                      />
-                    </Field>
-                  </div>
-                )}
 
-                <Field label="Notas">
-                  <Input
-                    value={deudaForm.notas}
-                    onChange={updateDeudaForm('notas')}
-                    placeholder="Información adicional…"
-                  />
-                </Field>
-                <Button type="submit" disabled={submitting}>
-                  <Plus size={16} style={{ marginRight: '8px' }} /> Registrar Deuda
-                </Button>
+                <MasOpciones etiqueta="Más opciones (tasa de interés, día de pago, notas)">
+                  {tipoDeudaSeleccionada !== 'cuenta_por_pagar' && (
+                    <div className={styles.row}>
+                      <Field label="Tasa interés anual (%)">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={deudaForm.tasa_interes_anual}
+                          onChange={updateDeudaForm('tasa_interes_anual')}
+                          placeholder="Ej. 24.5"
+                        />
+                      </Field>
+                      <Field label="Día de pago (1-31)">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={deudaForm.dia_pago}
+                          onChange={updateDeudaForm('dia_pago')}
+                          placeholder="Ej. 15"
+                        />
+                      </Field>
+                    </div>
+                  )}
+                  <Field label="Notas">
+                    <Input
+                      value={deudaForm.notas}
+                      onChange={updateDeudaForm('notas')}
+                      placeholder="Información adicional…"
+                    />
+                  </Field>
+                </MasOpciones>
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Button type="submit" disabled={submitting}>
+                    <Plus size={16} style={{ marginRight: '8px' }} /> Registrar deuda
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowFormDeuda(false)}>
+                    Cerrar
+                  </Button>
+                </div>
               </form>
             </Card>
           )}
 
-          {categoriaDeudas.length > 0 && (
-            <Card style={{ marginBottom: 20 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <strong>Categorías de deuda</strong>
-                <Button variant="secondary" onClick={() => setShowCategoriasDeuda((s) => !s)}>
-                  {showCategoriasDeuda ? 'Ocultar' : 'Gestionar categorías'}
-                </Button>
-              </div>
-              {showCategoriasDeuda && (
-                <div style={{ marginTop: 12 }}>
-                  <Table
-                    rowKey={(c) => c.id}
-                    emptyMessage="Sin categorías"
-                    columns={[
-                      {
-                        key: 'nombre',
-                        header: 'Categoría',
-                        render: (c) => (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: c.color, display: 'inline-block' }} />
-                            {c.icono} {c.nombre}
-                          </span>
-                        ),
-                      },
-                      {
-                        key: 'tipo',
-                        header: 'Tipo',
-                        render: (c) => TIPO_AMORTIZACION_OPTIONS.find((o) => o.value === c.tipo_amortizacion)?.label ?? c.tipo_amortizacion,
-                      },
-                      {
-                        key: 'acciones',
-                        header: '',
-                        render: (c) => (
-                          <Button variant="danger" onClick={() => setConfirmDeleteCategoriaDeuda(c)}>
-                            <Trash2 size={16} />
-                          </Button>
-                        ),
-                      },
-                    ]}
-                    rows={categoriaDeudas}
-                  />
-                </div>
-              )}
-            </Card>
-          )}
-
           <Card>
-            <h3>Deudas — Saldo total: <span style={{ color: '#e74c3c' }}>{formatMoneda(totalDeuda)}</span></h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+              <h3 style={{ margin: 0 }}>Deudas — Saldo total: <span style={{ color: '#e74c3c' }}>{formatMoneda(totalDeuda)}</span></h3>
+              <Button variant="secondary" onClick={() => setShowCategoriasDeuda((s) => !s)}>
+                <Settings size={14} style={{ marginRight: 6 }} />
+                {showCategoriasDeuda ? 'Ocultar categorías' : 'Gestionar categorías'}
+              </Button>
+            </div>
+            {showCategoriasDeuda && (
+              <div style={{ marginBottom: 12 }}>
+                <Table
+                  rowKey={(c) => c.id}
+                  emptyMessage="Sin categorías"
+                  columns={[
+                    {
+                      key: 'nombre',
+                      header: 'Categoría',
+                      render: (c) => (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: c.color, display: 'inline-block' }} />
+                          {c.icono} {c.nombre}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'tipo',
+                      header: 'Tipo',
+                      render: (c) => TIPO_AMORTIZACION_OPTIONS.find((o) => o.value === c.tipo_amortizacion)?.label ?? c.tipo_amortizacion,
+                    },
+                    {
+                      key: 'acciones',
+                      header: '',
+                      render: (c) => (
+                        <Button variant="danger" onClick={() => setConfirmDeleteCategoriaDeuda(c)}>
+                          <Trash2 size={16} />
+                        </Button>
+                      ),
+                    },
+                  ]}
+                  rows={categoriaDeudas}
+                />
+              </div>
+            )}
             <Table
               rowKey={(d) => d.id}
               emptyMessage="Sin deudas registradas"
@@ -1001,162 +1164,206 @@ export function Finanzas() {
       {/* Tab: Dashboard */}
       {activeTab === 'Dashboard' && (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '20px', marginBottom: '30px' }}>
+          {dashboardVacio ? (
             <Card>
-              <div style={{ textAlign: 'center' }}>
-                <h4>Total Ingresos</h4>
-                <p style={{ fontSize: '24px', color: '#27ae60', fontWeight: 'bold' }}>
-                  ${totalIngresos.toFixed(2)}
-                </p>
-              </div>
-            </Card>
-            <Card>
-              <div style={{ textAlign: 'center' }}>
-                <h4>Total Gastos</h4>
-                <p style={{ fontSize: '24px', color: '#e74c3c', fontWeight: 'bold' }}>
-                  ${totalGastos.toFixed(2)}
-                </p>
-              </div>
-            </Card>
-            <Card>
-              <div style={{ textAlign: 'center' }}>
-                <h4>Ganancia Neta</h4>
-                <p style={{ fontSize: '24px', color: totalIngresos - totalGastos >= 0 ? '#27ae60' : '#e74c3c', fontWeight: 'bold' }}>
-                  ${(totalIngresos - totalGastos).toFixed(2)}
-                </p>
-              </div>
-            </Card>
-            <Card>
-              <div style={{ textAlign: 'center' }}>
-                <h4>Deuda Pendiente</h4>
-                <p style={{ fontSize: '24px', color: totalDeuda > 0 ? '#e67e22' : '#27ae60', fontWeight: 'bold' }}>
-                  {formatMoneda(totalDeuda)}
-                </p>
-              </div>
-            </Card>
-          </div>
-
-          <Card>
-            <h3>Resumen Mensual (últimos 12 meses)</h3>
-            <Table
-              rowKey={(d) => d.mes}
-              emptyMessage="Sin datos"
-              columns={[
-                { key: 'mes', header: 'Mes' },
-                { key: 'total_ingresos', header: 'Ingresos', render: (d) => `$${d.total_ingresos}` },
-                { key: 'total_gastos', header: 'Gastos', render: (d) => `$${d.total_gastos}` },
-                { key: 'ganancia', header: 'Ganancia', render: (d) => `$${d.ganancia}` },
-                {
-                  key: 'acciones',
-                  header: '',
-                  render: (d) => (
-                    <Button variant="secondary" onClick={() => abrirDetalleMes(d.mes)}>
-                      <Eye size={16} style={{ marginRight: '6px' }} /> Ver detalle
-                    </Button>
-                  ),
-                },
-              ]}
-              rows={dashboard}
-            />
-          </Card>
-
-          <Card style={{ marginTop: '20px' }}>
-            <h3>Resumen por Categoría (Ingresos)</h3>
-            <Table
-              rowKey={(r) => r.categoria}
-              emptyMessage="Sin datos"
-              columns={[
-                { key: 'categoria', header: 'Categoría' },
-                { key: 'total', header: 'Total', render: (r) => `$${r.total}` },
-                { key: 'porcentaje', header: 'Porcentaje', render: (r) => `${r.porcentaje}%` },
-              ]}
-              rows={resumenCategoria}
-            />
-          </Card>
-
-          {gastosPorDia.length > 0 && (
-            <Card style={{ marginTop: '20px' }}>
-              <h3>Días con mayor gasto (este mes)</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={gastosPorDia.map((d) => ({ ...d, fechaCorta: formatFechaCorta(d.fecha) }))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="fechaCorta" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(value) => formatMoneda(value)} />
-                  <Bar dataKey="total" name="Gasto" fill="#e74c3c" />
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-          )}
-
-          {resumenGastosCategoria.length > 0 && (
-            <Card style={{ marginTop: '20px' }}>
-              <h3>Gastos por Categoría (este mes)</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={resumenGastosCategoria} layout="vertical" margin={{ left: 24 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="categoria" tick={{ fontSize: 11 }} width={120} />
-                  <Tooltip formatter={(value) => formatMoneda(value)} />
-                  <Bar dataKey="total" name="Gasto">
-                    {resumenGastosCategoria.map((entry, index) => (
-                      <Cell key={entry.categoria} fill={CATEGORIA_COLORS[index % CATEGORIA_COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-          )}
-
-          {deudaResumen.por_categoria.length > 0 && (
-            <Card style={{ marginTop: '20px' }}>
-              <h3>Deuda por Categoría</h3>
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart data={deudaResumen.por_categoria} layout="vertical" margin={{ left: 24 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis type="category" dataKey="categoria" tick={{ fontSize: 11 }} width={140} />
-                  <Tooltip formatter={(value) => formatMoneda(value)} />
-                  <Bar dataKey="total" name="Deuda">
-                    {deudaResumen.por_categoria.map((entry) => (
-                      <Cell key={entry.categoria} fill={entry.color ?? '#e67e22'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </Card>
-          )}
-
-          {proximosVencimientos.length > 0 && (
-            <Card style={{ marginTop: '20px' }}>
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <AlertTriangle size={18} color="#e67e22" /> Próximos vencimientos (30 días)
-              </h3>
-              <Table
-                rowKey={(v) => v.deuda_id}
-                emptyMessage="Sin vencimientos próximos"
-                columns={[
-                  { key: 'acreedor', header: 'Acreedor' },
-                  {
-                    key: 'categoria',
-                    header: 'Categoría',
-                    render: (v) => <CategoriaBubble nombre={v.categoria} color={v.categoria_color} />,
-                  },
-                  { key: 'saldo_actual', header: 'Saldo', render: (v) => formatMoneda(v.saldo_actual) },
-                  { key: 'fecha_vencimiento', header: 'Vence', render: (v) => formatFechaCorta(v.fecha_vencimiento) },
-                  {
-                    key: 'dias_restantes',
-                    header: 'Días restantes',
-                    render: (v) => (
-                      <span style={{ color: v.dias_restantes <= 7 ? '#e74c3c' : '#e67e22', fontWeight: 600 }}>
-                        {v.dias_restantes} días
-                      </span>
-                    ),
-                  },
-                ]}
-                rows={proximosVencimientos}
+              <EmptyState
+                icon={Wallet}
+                title="Todavía no hay movimientos"
+                description="Registrá tu primer ingreso, gasto o deuda y acá vas a ver el resumen de cómo va tu negocio."
+                action={<Button onClick={() => setActiveTab('Ingresos')}>Registrar un ingreso</Button>}
               />
             </Card>
+          ) : (
+            <>
+              {/* Nivel 1 — Alerta condicional de vencimientos urgentes */}
+              {vencUrgentes.length > 0 && (
+                <Card style={{ marginBottom: 20, border: '1px solid #e67e22', background: '#fef5e7' }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('Deudas')}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                      background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+                      font: 'inherit', color: 'inherit', textAlign: 'left',
+                    }}
+                  >
+                    <AlertTriangle size={20} color="#e67e22" style={{ flexShrink: 0 }} />
+                    <span>
+                      <strong>
+                        {vencUrgentes.length === 1
+                          ? '1 pago vence en los próximos 7 días'
+                          : `${vencUrgentes.length} pagos vencen en los próximos 7 días`}
+                      </strong>
+                      {' — el más próximo: '}
+                      {vencUrgentes[0].acreedor} ({vencUrgentes[0].dias_restantes} {vencUrgentes[0].dias_restantes === 1 ? 'día' : 'días'},{' '}
+                      {formatMoneda(vencUrgentes[0].saldo_actual)})
+                    </span>
+                    <span style={{ marginLeft: 'auto', color: '#e67e22', fontWeight: 600, flexShrink: 0 }}>Ver deudas →</span>
+                  </button>
+                </Card>
+              )}
+
+              {/* Nivel 1 — Balance del mes (héroe) */}
+              <Card style={{ marginBottom: 20 }}>
+                <div style={{ textAlign: 'center', padding: '12px 0' }}>
+                  <h4 style={{ margin: 0, color: '#666', fontWeight: 600 }}>
+                    Balance de {nombreMes(mesActual?.mes)}
+                  </h4>
+                  <p style={{
+                    fontSize: 44, fontWeight: 700, margin: '8px 0 4px',
+                    color: balanceMes >= 0 ? '#27ae60' : '#e74c3c',
+                  }}>
+                    {formatMoneda(balanceMes)}
+                  </p>
+                  {deltaBalance !== null && isFinite(deltaBalance) && (
+                    <span style={{ color: deltaBalance >= 0 ? '#27ae60' : '#e74c3c', fontSize: 14, fontWeight: 600 }}>
+                      {deltaBalance >= 0 ? '▲' : '▼'} {Math.abs(deltaBalance).toFixed(0)}% vs {nombreMes(mesAnterior?.mes)}
+                    </span>
+                  )}
+                </div>
+              </Card>
+
+              {/* Nivel 1 — KPI row del mes */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 20 }}>
+                <StatTile
+                  label="Ingresos del mes"
+                  value={formatMoneda(mesActual?.total_ingresos)}
+                  delta={deltaIngresos}
+                  subeEsBueno
+                />
+                <StatTile
+                  label="Gastos del mes"
+                  value={formatMoneda(mesActual?.total_gastos)}
+                  delta={deltaGastos}
+                  subeEsBueno={false}
+                />
+                <StatTile
+                  label="Deuda pendiente"
+                  value={formatMoneda(totalDeuda)}
+                  delta={null}
+                  notaSinDelta={deudasActivas === 0 ? 'Sin deudas activas' : `${deudasActivas} ${deudasActivas === 1 ? 'deuda activa' : 'deudas activas'}`}
+                />
+              </div>
+
+              {/* Nivel 2 — Tendencia 12 meses */}
+              <Card>
+                <h3 style={{ marginTop: 0 }}>Tendencia (últimos 12 meses)</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart
+                    data={tendenciaData}
+                    margin={{ top: 8, right: 16, left: 8, bottom: 0 }}
+                    onClick={(e) => e && e.activeLabel && abrirDetalleMes(e.activeLabel)}
+                  >
+                    <CartesianGrid stroke="rgba(0,0,0,0.08)" vertical={false} />
+                    <XAxis dataKey="mes" tick={{ fontSize: 11 }} tickFormatter={nombreMesCorto} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`} />
+                    <Tooltip formatter={(value) => formatMoneda(value)} labelFormatter={nombreMes} />
+                    <Legend />
+                    <Line type="monotone" dataKey="Ingresos" stroke="#27ae60" strokeWidth={2} dot={false} activeDot={{ r: 5 }} />
+                    <Line type="monotone" dataKey="Gastos" stroke="#e74c3c" strokeWidth={2} dot={false} activeDot={{ r: 5 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+                <p style={{ color: '#888', fontSize: 12, textAlign: 'center', margin: '4px 0 0' }}>
+                  Hacé clic en un mes para ver el detalle de sus movimientos
+                </p>
+              </Card>
+
+              {/* Nivel 3 — Desgloses bajo demanda */}
+              <SeccionColapsable
+                titulo="Gastos por categoría (este mes)"
+                resumen={mayorGasto ? `Mayor: ${mayorGasto.categoria} ${formatMoneda(mayorGasto.total)}` : 'Sin gastos este mes'}
+              >
+                <BarrasCategoria datos={resumenGastosCategoria} colorBarra="#e74c3c" colorPorNombre={colorGastoPorNombre} />
+                {gastosPorDia.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ marginBottom: 8 }}>Días con mayor gasto</h4>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={gastosPorDia.map((d) => ({ ...d, fechaCorta: formatFechaCorta(d.fecha) }))}>
+                        <CartesianGrid stroke="rgba(0,0,0,0.08)" vertical={false} />
+                        <XAxis dataKey="fechaCorta" tick={{ fontSize: 11 }} />
+                        <YAxis tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(value) => formatMoneda(value)} />
+                        <Bar dataKey="total" name="Gasto" fill="#e74c3c" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </SeccionColapsable>
+
+              <SeccionColapsable
+                titulo="Ingresos por categoría (este mes)"
+                resumen={mayorIngreso ? `Mayor: ${mayorIngreso.categoria} ${formatMoneda(mayorIngreso.total)}` : 'Sin ingresos este mes'}
+              >
+                <BarrasCategoria datos={resumenCategoria} colorBarra="#27ae60" colorPorNombre={colorIngresoPorNombre} />
+              </SeccionColapsable>
+
+              <SeccionColapsable
+                titulo="Deudas y vencimientos"
+                resumen={
+                  totalDeuda > 0
+                    ? `Pendiente: ${formatMoneda(totalDeuda)}${proximosVencimientos.length > 0 ? ` · ${proximosVencimientos.length} vencimiento(s) en 30 días` : ''}`
+                    : 'Sin deuda pendiente'
+                }
+              >
+                {deudaResumen.por_categoria.length > 0 ? (
+                  <BarrasCategoria datos={deudaResumen.por_categoria} colorBarra="#e67e22" />
+                ) : (
+                  <p style={{ color: '#888' }}>Sin deudas activas.</p>
+                )}
+                {proximosVencimientos.length > 0 && (
+                  <div style={{ marginTop: 24 }}>
+                    <h4 style={{ marginBottom: 8 }}>Próximos vencimientos (30 días)</h4>
+                    <Table
+                      rowKey={(v) => v.deuda_id}
+                      emptyMessage="Sin vencimientos próximos"
+                      columns={[
+                        { key: 'acreedor', header: 'Acreedor' },
+                        {
+                          key: 'categoria',
+                          header: 'Categoría',
+                          render: (v) => <CategoriaBubble nombre={v.categoria} color={v.categoria_color} />,
+                        },
+                        { key: 'saldo_actual', header: 'Saldo', render: (v) => formatMoneda(v.saldo_actual) },
+                        { key: 'fecha_vencimiento', header: 'Vence', render: (v) => formatFechaCorta(v.fecha_vencimiento) },
+                        {
+                          key: 'dias_restantes',
+                          header: 'Días restantes',
+                          render: (v) => (
+                            <span style={{ color: v.dias_restantes <= 7 ? '#e74c3c' : '#e67e22', fontWeight: 600 }}>
+                              {v.dias_restantes} días
+                            </span>
+                          ),
+                        },
+                      ]}
+                      rows={proximosVencimientos}
+                    />
+                  </div>
+                )}
+              </SeccionColapsable>
+
+              <SeccionColapsable titulo="Tabla mensual completa" resumen="Últimos 12 meses en detalle">
+                <Table
+                  rowKey={(d) => d.mes}
+                  emptyMessage="Sin datos"
+                  columns={[
+                    { key: 'mes', header: 'Mes', render: (d) => nombreMes(d.mes) },
+                    { key: 'total_ingresos', header: 'Ingresos', render: (d) => formatMoneda(d.total_ingresos) },
+                    { key: 'total_gastos', header: 'Gastos', render: (d) => formatMoneda(d.total_gastos) },
+                    { key: 'ganancia', header: 'Ganancia', render: (d) => formatMoneda(d.ganancia) },
+                    {
+                      key: 'acciones',
+                      header: '',
+                      render: (d) => (
+                        <Button variant="secondary" onClick={() => abrirDetalleMes(d.mes)}>
+                          <Eye size={16} style={{ marginRight: '6px' }} /> Ver detalle
+                        </Button>
+                      ),
+                    },
+                  ]}
+                  rows={dashboard}
+                />
+              </SeccionColapsable>
+            </>
           )}
         </div>
       )}
@@ -1191,6 +1398,7 @@ export function Finanzas() {
                 { key: 'categoria', header: 'Categoría' },
                 { key: 'monto', header: 'Monto', render: (m) => formatMoneda(m.monto) },
                 { key: 'descripcion', header: 'Descripción', render: (m) => m.descripcion || '—' },
+                { key: 'comprobante', header: 'Recibo', render: (m) => <MiniaturaComprobante url={m.comprobante} /> },
               ]}
               rows={detalleMovimientos}
             />
@@ -1218,12 +1426,11 @@ export function Finanzas() {
             <form className={styles.form} onSubmit={handleRegistrarPago}>
               <div className={styles.row}>
                 <Field label="Monto pagado">
-                  <Input
-                    type="number"
-                    step="0.01"
+                  <InputMonto
                     value={pagoForm.monto}
                     onChange={(e) => setPagoForm((f) => ({ ...f, monto: e.target.value }))}
                     required
+                    autoFocus
                   />
                 </Field>
                 <Field label="Fecha">
@@ -1346,6 +1553,15 @@ export function Finanzas() {
         confirmLabel="Eliminar"
         onConfirm={handleDeleteDeuda}
         onCancel={() => setConfirmDeleteDeuda(null)}
+      />
+
+      <EscanearRecibos
+        open={escanearTipo !== null}
+        tipoInicial={escanearTipo ?? 'gasto'}
+        onClose={() => setEscanearTipo(null)}
+        categoriaIngresos={categoriaIngresos}
+        categoriaGastos={categoriaGastos}
+        onRegistrado={load}
       />
     </div>
   )

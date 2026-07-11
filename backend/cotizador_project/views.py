@@ -7,6 +7,8 @@ from django.core.mail import EmailMultiAlternatives
 from django.db import transaction
 from django.db.models import ProtectedError
 from django.http import FileResponse
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -462,3 +464,66 @@ class ReporteResumenView(APIView):
             'clientes_activos': organization.clientes.filter(activo=True).count(),
             'por_estado': por_estado,
         })
+
+
+# ─── Vista pública de cotización (QR / link compartido, sin autenticación) ────
+
+class CotizacionPublicaView(APIView):
+    """Datos de una cotización para la página pública /c/<token>.
+    Expone solo lo relevante para el cliente final — nada interno."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        cotizacion = get_object_or_404(
+            Cotizacion.objects.select_related('organization', 'cliente').prefetch_related('items__servicio'),
+            token_publico=token,
+        )
+        org = cotizacion.organization
+        logo_url = request.build_absolute_uri(org.logo.url) if org.logo else None
+
+        return Response({
+            'organizacion': {
+                'nombre': org.nombre_comercial or org.nombre,
+                'logo': logo_url,
+                'color_primario': org.color_primario,
+                'telefono': org.telefono,
+                'whatsapp': org.whatsapp,
+                'email': org.email,
+            },
+            'numero': cotizacion.numero,
+            'estado': cotizacion.estado,
+            'fecha': cotizacion.creado.date(),
+            'fecha_vencimiento': cotizacion.fecha_vencimiento,
+            'vencida': cotizacion.fecha_vencimiento < timezone.now().date(),
+            'cliente': cotizacion.cliente.nombre,
+            'items': [
+                {
+                    'servicio': item.servicio.nombre,
+                    'cantidad': item.cantidad,
+                    'precio_unitario': str(item.precio_unitario),
+                    'subtotal': str(item.calcular_subtotal()),
+                }
+                for item in cotizacion.items.all()
+            ],
+            'subtotal': str(cotizacion.subtotal),
+            'iva_porcentaje': str(cotizacion.iva_porcentaje),
+            'impuesto': str(cotizacion.impuesto),
+            'total': str(cotizacion.total),
+        })
+
+
+class CotizacionPublicaPdfView(APIView):
+    """Descarga pública del PDF de la cotización, vía token."""
+
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        cotizacion = get_object_or_404(Cotizacion, token_publico=token)
+        pdf_buffer = generar_pdf_cotizacion(cotizacion)
+        return FileResponse(
+            pdf_buffer,
+            as_attachment=True,
+            filename=f"{cotizacion.numero}.pdf",
+            content_type='application/pdf',
+        )

@@ -47,6 +47,7 @@ class Ingreso(models.Model):
     monto = models.DecimalField(max_digits=12, decimal_places=2)
     fecha = models.DateField()
     descripcion = models.TextField(blank=True, null=True)
+    comprobante = models.ImageField(upload_to='comprobantes/', null=True, blank=True)
     creado_por = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -113,6 +114,7 @@ class Gasto(models.Model):
     monto = models.DecimalField(max_digits=12, decimal_places=2)
     fecha = models.DateField()
     descripcion = models.TextField(blank=True, null=True)
+    comprobante = models.ImageField(upload_to='comprobantes/', null=True, blank=True)
     creado_por = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -162,7 +164,7 @@ class CategoriaDeuda(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['organization', 'nombre'], name='unique_categoria_deuda_por_org'),
         ]
-        indexes = [models.Index(fields=['organization'])]
+        indexes = [models.Index(fields=['organization'], name='finanzas_ap_organiza_deuda_idx')]
 
     def __str__(self):
         return f"{self.nombre} ({self.organization.nombre})"
@@ -201,8 +203,8 @@ class Deuda(models.Model):
         verbose_name = 'Deuda'
         verbose_name_plural = 'Deudas'
         indexes = [
-            models.Index(fields=['organization', 'categoria']),
-            models.Index(fields=['organization', 'estado']),
+            models.Index(fields=['organization', 'categoria'], name='finanzas_ap_deuda_org_cat_idx'),
+            models.Index(fields=['organization', 'estado'], name='finanzas_ap_deuda_org_est_idx'),
         ]
         ordering = ['-creado']
 

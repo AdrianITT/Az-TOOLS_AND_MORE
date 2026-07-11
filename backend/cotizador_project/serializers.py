@@ -224,11 +224,11 @@ class CotizacionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'organization', 'cliente', 'usuario_creador', 'numero',
             'descripcion', 'estado', 'subtotal', 'iva_porcentaje', 'impuesto', 'total',
-            'fecha_vencimiento', 'creado', 'actualizado', 'items',
+            'fecha_vencimiento', 'creado', 'actualizado', 'items', 'token_publico',
         ]
         read_only_fields = [
             'id', 'organization', 'usuario_creador', 'numero',
-            'subtotal', 'impuesto', 'total', 'creado', 'actualizado',
+            'subtotal', 'impuesto', 'total', 'creado', 'actualizado', 'token_publico',
         ]
 
 

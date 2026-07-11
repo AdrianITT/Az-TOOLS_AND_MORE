@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { PlusCircle, CheckCircle2, Circle, PenLine } from 'lucide-react'
+import { PlusCircle, CheckCircle2, Circle, PenLine, Settings } from 'lucide-react'
+import { MasOpciones } from '../../components/ui/FormExtras'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -8,7 +9,6 @@ import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
-import { EmptyState } from '../../components/ui/EmptyState'
 import formStyles from '../shared-form.module.css'
 import styles from './Servicios.module.css'
 
@@ -281,10 +281,13 @@ export function ServicioForm() {
             <Field label="Precio base">
               <Input type="number" step="0.01" value={form.precio_base} onChange={update('precio_base')} required />
             </Field>
-            <Field label="Descripción">
-              <Input value={form.descripcion} onChange={update('descripcion')} />
-            </Field>
           </div>
+
+          <MasOpciones etiqueta="Más opciones (descripción)">
+            <Field label="Descripción">
+              <Input value={form.descripcion} onChange={update('descripcion')} placeholder="Opcional" />
+            </Field>
+          </MasOpciones>
 
           {categoriaActual && atributosDeCategoria.length > 0 && (
             <Card>
@@ -322,29 +325,32 @@ export function ServicioForm() {
         </form>
       </Card>
 
-      {categoriaActual && (
+      {categoriaActual && !showAtributos && (
+        <button
+          type="button"
+          onClick={() => setShowAtributos(true)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+            color: 'var(--color-text-muted, #888)', fontSize: 13, marginBottom: 20,
+          }}
+        >
+          <Settings size={14} />
+          Configurar atributos de "{categoriaActual}"
+          {atributosDeCategoria.length > 0 ? ` (${atributosDeCategoria.length})` : ' (sin atributos: color, talla, etc.)'}
+        </button>
+      )}
+
+      {categoriaActual && showAtributos && (
         <Card style={{ marginBottom: 20, background: 'var(--color-bg)' }}>
           <div className={styles.panelHeader}>
             <strong>Atributos de "{categoriaActual}"</strong>
-            <Button type="button" variant="secondary" onClick={() => setShowAtributos((s) => !s)}>
-              {showAtributos ? 'Ocultar gestión de atributos' : 'Gestionar atributos de esta categoría'}
+            <Button type="button" variant="secondary" onClick={() => setShowAtributos(false)}>
+              Ocultar
             </Button>
           </div>
 
-          {atributosDeCategoria.length === 0 && !showAtributos && (
-            <EmptyState
-              title="Esta categoría todavía no tiene atributos"
-              description="Los atributos son campos dinámicos (color, talla, etc.) que se piden al cargar un servicio de esta categoría."
-              action={
-                <Button type="button" onClick={() => setShowAtributos(true)}>
-                  + Agregar primer atributo
-                </Button>
-              }
-            />
-          )}
-
-          {showAtributos && (
-            <>
+          <>
               <Table
                 rowKey={(a) => a.id}
                 rowClassName={(a) => (a.id === highlightAtributoId ? styles.rowJustAdded : undefined)}
@@ -433,8 +439,7 @@ export function ServicioForm() {
                   )}
                 </div>
               </form>
-            </>
-          )}
+          </>
         </Card>
       )}
 

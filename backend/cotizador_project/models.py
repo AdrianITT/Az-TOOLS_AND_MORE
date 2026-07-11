@@ -518,6 +518,9 @@ class Cotizacion(models.Model):
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
 
+    # Link público (QR/WhatsApp): imposible de adivinar, no expone el ID secuencial
+    token_publico = models.CharField(max_length=64, unique=True, editable=False, blank=True)
+
     class Meta:
         verbose_name = 'Cotización'
         verbose_name_plural = 'Cotizaciones'
@@ -552,6 +555,9 @@ class Cotizacion(models.Model):
                 secuencia = int(ultimo.numero.split('-')[-1]) + 1
 
             self.numero = f"COT-{fecha}-{secuencia:04d}"
+
+        if not self.token_publico:
+            self.token_publico = secrets.token_urlsafe(16)
 
         super().save(*args, **kwargs)
 

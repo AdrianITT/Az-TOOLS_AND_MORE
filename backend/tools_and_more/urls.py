@@ -16,8 +16,8 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.conf import settings
-from django.conf.urls.static import static
-from django.urls import include, path
+from django.urls import include, path, re_path
+from django.views.static import serve
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,9 +26,8 @@ urlpatterns = [
     path('api/qr/', include('qr_app.urls')),
     path('api/fibras/', include('fibras_app.urls')),
     path('api/pdf/', include('pdf_tools_app.urls')),
+    # Media (logos, comprobantes) se sirve desde Django también en producción:
+    # este despliegue autohospedado no usa almacenamiento externo (S3/etc.).
+    # OJO: el helper static() NO sirve — devuelve [] cuando DEBUG=False.
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': settings.MEDIA_ROOT}),
 ]
-
-# Media (logos subidos, etc.) se sirve siempre desde Django: este despliegue
-# autohospedado no usa almacenamiento de objetos externo (S3/etc.), así que
-# no basta con gatear esto por DEBUG como hace el helper por defecto.
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
