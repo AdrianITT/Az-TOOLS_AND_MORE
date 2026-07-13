@@ -1,6 +1,6 @@
 # Análisis de Mejora Continua — Az-TOOLS_AND_MORE
 
-> **Estado:** análisis entregado (2026-07-12); pendiente priorizar con el usuario qué olas se ejecutan.
+> **Estado:** análisis entregado (2026-07-12). **Ola 1 completa (2026-07-13):** ✅ commit git, ✅ C2 respaldos (db-backup diario, restauración verificada; **pendiente segunda copia en USB/Drive**), ✅ C1 paginación real + totales del backend (`/finanzas/totales/`, componente `Paginacion` en Finanzas/Clientes/Cotizaciones/Servicios, categorías sin paginar, `page_size` para selects/checklists), ✅ C3 editar ingresos/gastos/deudas desde la UI, ✅ T4 ordering. Pendientes: Olas 2-3.
 
 Análisis del sistema completo con ojos de mejora continua: exactitud de datos, valor de negocio, experiencia de uso, y salud técnica. Ordenado por lo que más importa, no por lo más vistoso.
 

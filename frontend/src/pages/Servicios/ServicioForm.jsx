@@ -52,7 +52,8 @@ export function ServicioForm() {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   function loadAtributos() {
-    return api.get('/atributos-plantilla/').then((data) => setAtributos(data.results ?? data))
+    // page_size alto: se necesitan todos los atributos para armar los formularios por categoría
+    return api.get('/atributos-plantilla/', { page_size: 200 }).then((data) => setAtributos(data.results ?? data))
   }
 
   useEffect(() => {

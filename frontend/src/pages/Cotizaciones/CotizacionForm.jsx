@@ -111,8 +111,9 @@ export function CotizacionForm() {
   const isItemPending = Boolean(itemForm.servicio)
 
   useEffect(() => {
-    api.get('/clientes/').then((data) => setClientes(data.results ?? data))
-    api.get('/servicios/').then((data) => setServicios(data.results ?? data))
+    // page_size alto: estos selects necesitan la lista completa, no una página
+    api.get('/clientes/', { page_size: 200 }).then((data) => setClientes(data.results ?? data))
+    api.get('/servicios/', { page_size: 200 }).then((data) => setServicios(data.results ?? data))
   }, [])
 
   useEffect(() => {

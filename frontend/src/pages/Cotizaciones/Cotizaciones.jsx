@@ -8,6 +8,7 @@ import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { Paginacion } from '../../components/ui/Paginacion'
 import formStyles from '../shared-form.module.css'
 import styles from './Cotizaciones.module.css'
 
@@ -32,21 +33,32 @@ export function Cotizaciones() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [duplicandoId, setDuplicandoId] = useState(null)
 
+  const [page, setPage] = useState(1)
+  const [count, setCount] = useState(0)
+
   useEffect(() => {
-    api.get('/clientes/').then((data) => setClientes(data.results ?? data))
+    api.get('/clientes/', { page_size: 200 }).then((data) => setClientes(data.results ?? data))
   }, [])
+
+  // Al cambiar un filtro se vuelve a la página 1
+  useEffect(() => {
+    setPage(1)
+  }, [search, estado, clienteFiltro])
 
   useEffect(() => {
     setLoading(true)
     const handle = setTimeout(() => {
       api
-        .get('/cotizaciones/', { search, estado, cliente: clienteFiltro })
-        .then((data) => setCotizaciones(data.results ?? data))
+        .get('/cotizaciones/', { search, estado, cliente: clienteFiltro, page })
+        .then((data) => {
+          setCotizaciones(data.results ?? data)
+          setCount(data.count ?? (data.results ?? data).length)
+        })
         .catch(() => setError('No se pudieron cargar las cotizaciones'))
         .finally(() => setLoading(false))
     }, 300)
     return () => clearTimeout(handle)
-  }, [search, estado, clienteFiltro])
+  }, [search, estado, clienteFiltro, page])
 
   const clientesById = useMemo(() => {
     const map = {}
@@ -163,6 +175,7 @@ export function Cotizaciones() {
           rows={cotizaciones}
         />
       )}
+      <Paginacion page={page} count={count} onPage={setPage} />
 
       <ConfirmDialog
         open={confirmDeleteId !== null}

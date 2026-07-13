@@ -5,6 +5,7 @@ import { Card } from '../../components/ui/Card'
 import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
+import { Paginacion } from '../../components/ui/Paginacion'
 import styles from '../shared-form.module.css'
 
 const TIPOS = [
@@ -26,17 +27,28 @@ export function Clientes() {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [count, setCount] = useState(0)
 
-  function load() {
+  function load(p = page) {
     setLoading(true)
     api
-      .get('/clientes/')
-      .then((data) => setClientes(data.results ?? data))
-      .catch(() => setError('No se pudieron cargar los clientes'))
+      .get('/clientes/', { page: p })
+      .then((data) => {
+        setClientes(data.results ?? data)
+        setCount(data.count ?? (data.results ?? data).length)
+      })
+      .catch((err) => {
+        if (err.status === 404 && p > 1) {
+          setPage(p - 1)
+          return load(p - 1)
+        }
+        setError('No se pudieron cargar los clientes')
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(load, [])
+  useEffect(() => load(1), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function update(field) {
     return (event) => setForm((f) => ({ ...f, [field]: event.target.value }))
@@ -185,6 +197,14 @@ export function Clientes() {
           rows={clientes}
         />
       )}
+      <Paginacion
+        page={page}
+        count={count}
+        onPage={(p) => {
+          setPage(p)
+          load(p)
+        }}
+      />
     </div>
   )
 }

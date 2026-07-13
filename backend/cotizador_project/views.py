@@ -98,6 +98,7 @@ class ServicioViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     }
     filterset_fields = ['categoria', 'activo']
     search_fields = ['nombre']
+    ordering = ['nombre']
 
     def perform_create(self, serializer):
         serializer.save(

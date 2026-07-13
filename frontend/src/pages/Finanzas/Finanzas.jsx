@@ -12,7 +12,8 @@ import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Modal } from '../../components/ui/Modal'
-import { Trash2, Plus, Wallet, Eye, AlertTriangle, CheckSquare, Square, ChevronDown, ChevronRight, Settings, Camera } from 'lucide-react'
+import { Trash2, Plus, Wallet, Eye, AlertTriangle, CheckSquare, Square, ChevronDown, ChevronRight, Settings, Camera, Pencil } from 'lucide-react'
+import { Paginacion } from '../../components/ui/Paginacion'
 import { MasOpciones, InputMonto } from '../../components/ui/FormExtras'
 import { CategoriaInline, TIPO_AMORTIZACION_OPTIONS } from '../../components/ui/CategoriaInline'
 import { EscanearRecibos } from './EscanearRecibos'
@@ -272,6 +273,20 @@ export function Finanzas() {
   const [showFormIngreso, setShowFormIngreso] = useState(false)
   const [showFormGasto, setShowFormGasto] = useState(false)
   const [showFormDeuda, setShowFormDeuda] = useState(false)
+
+  // Paginación (los totales de encabezado vienen del backend, no de la página visible)
+  const [totales, setTotales] = useState({ total_ingresos: 0, total_gastos: 0 })
+  const [pageIngresos, setPageIngresos] = useState(1)
+  const [countIngresos, setCountIngresos] = useState(0)
+  const [pageGastos, setPageGastos] = useState(1)
+  const [countGastos, setCountGastos] = useState(0)
+  const [pageDeudas, setPageDeudas] = useState(1)
+  const [countDeudas, setCountDeudas] = useState(0)
+
+  // Edición (C3): id del registro en edición, o null si el form está en modo alta
+  const [editandoIngresoId, setEditandoIngresoId] = useState(null)
+  const [editandoGastoId, setEditandoGastoId] = useState(null)
+  const [editandoDeudaId, setEditandoDeudaId] = useState(null)
   const [escanearTipo, setEscanearTipo] = useState(null) // 'gasto' | 'ingreso' | null
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -289,7 +304,7 @@ export function Finanzas() {
   // Deudas state
   const [categoriaDeudas, setCategoriaDeudas] = useState([])
   const [deudas, setDeudas] = useState([])
-  const [deudaResumen, setDeudaResumen] = useState({ total_deuda: 0, por_categoria: [] })
+  const [deudaResumen, setDeudaResumen] = useState({ total_deuda: 0, deudas_activas: 0, por_categoria: [] })
   const [proximosVencimientos, setProximosVencimientos] = useState([])
   const [deudaForm, setDeudaForm] = useState(() => nuevaDeudaForm())
   const [creatingCategoriaDeuda, setCreatingCategoriaDeuda] = useState(false)
@@ -308,11 +323,37 @@ export function Finanzas() {
   const [analizandoPago, setAnalizandoPago] = useState(false)
   const pagoFileRef = useRef(null)
 
+  // Loader paginado genérico: si borrar dejó la página fuera de rango (404), retrocede una
+  function cargarPagina(path, page, setRows, setCount, setPage) {
+    return api
+      .get(path, { page })
+      .then((data) => {
+        setRows(data.results ?? data)
+        setCount(data.count ?? (data.results ?? data).length)
+      })
+      .catch((err) => {
+        if (err.status === 404 && page > 1) {
+          setPage(page - 1)
+          return cargarPagina(path, page - 1, setRows, setCount, setPage)
+        }
+        throw err
+      })
+  }
+
+  const loadIngresos = (page = pageIngresos) =>
+    cargarPagina('/finanzas/ingresos/', page, setIngresos, setCountIngresos, setPageIngresos)
+  const loadGastos = (page = pageGastos) =>
+    cargarPagina('/finanzas/gastos/', page, setGastos, setCountGastos, setPageGastos)
+  const loadDeudas = (page = pageDeudas) =>
+    cargarPagina('/finanzas/deudas/', page, setDeudas, setCountDeudas, setPageDeudas)
+
   function load() {
     setLoading(true)
     Promise.all([
-      api.get('/finanzas/ingresos/'),
-      api.get('/finanzas/gastos/'),
+      loadIngresos(),
+      loadGastos(),
+      loadDeudas(),
+      api.get('/finanzas/totales/'),
       api.get('/finanzas/categorias-ingresos/'),
       api.get('/finanzas/categorias-gastos/'),
       api.get('/finanzas/dashboard/'),
@@ -320,13 +361,11 @@ export function Finanzas() {
       api.get('/finanzas/gastos-por-dia/'),
       api.get('/finanzas/resumen-por-categoria/', { tipo: 'gastos' }),
       api.get('/finanzas/categorias-deudas/'),
-      api.get('/finanzas/deudas/'),
       api.get('/finanzas/deudas/resumen/'),
       api.get('/finanzas/deudas/proximos-vencimientos/'),
     ])
-      .then(([ingresosData, gastosData, catIngresos, catGastos, dash, resumen, porDia, resumenGastos, catDeudas, deudasData, resDeudas, proxVenc]) => {
-        setIngresos(ingresosData.results ?? ingresosData)
-        setGastos(gastosData.results ?? gastosData)
+      .then(([, , , tot, catIngresos, catGastos, dash, resumen, porDia, resumenGastos, catDeudas, resDeudas, proxVenc]) => {
+        setTotales(tot)
         setCategoriaIngresos(catIngresos.results ?? catIngresos)
         setCategoriaGastos(catGastos.results ?? catGastos)
         setDashboard(dash.results ?? dash)
@@ -334,9 +373,9 @@ export function Finanzas() {
         setGastosPorDia(porDia.results ?? porDia)
         setResumenGastosCategoria(resumenGastos.results ?? resumenGastos)
         setCategoriaDeudas(catDeudas.results ?? catDeudas)
-        setDeudas(deudasData.results ?? deudasData)
         setDeudaResumen({
           total_deuda: parseFloat(resDeudas.total_deuda || 0),
+          deudas_activas: resDeudas.deudas_activas ?? 0,
           por_categoria: (resDeudas.por_categoria || []).map((c) => ({ ...c, total: parseFloat(c.total) })),
         })
         setProximosVencimientos(proxVenc.results ?? proxVenc)
@@ -470,17 +509,36 @@ export function Finanzas() {
     setError('')
     setSubmitting(true)
     try {
-      await api.post('/finanzas/ingresos/', ingresoForm)
-      recordarCategoria('ingresos', ingresoForm.categoria)
-      // Conserva categoría y fecha para captura en ráfaga; limpia monto y descripción
-      setIngresoForm((f) => ({ ...f, monto: '', descripcion: '' }))
+      if (editandoIngresoId) {
+        await api.patch(`/finanzas/ingresos/${editandoIngresoId}/`, ingresoForm)
+        setEditandoIngresoId(null)
+        setShowFormIngreso(false)
+        setIngresoForm(nuevoMovimientoForm('ingresos'))
+        flashSuccess('Ingreso actualizado')
+      } else {
+        await api.post('/finanzas/ingresos/', ingresoForm)
+        recordarCategoria('ingresos', ingresoForm.categoria)
+        // Conserva categoría y fecha para captura en ráfaga; limpia monto y descripción
+        setIngresoForm((f) => ({ ...f, monto: '', descripcion: '' }))
+        flashSuccess('Ingreso agregado')
+      }
       load()
-      flashSuccess('Ingreso agregado')
     } catch (err) {
-      setError(getErrorMessage(err, 'Error al agregar ingreso'))
+      setError(getErrorMessage(err, 'Error al guardar el ingreso'))
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function iniciarEdicionIngreso(ingreso) {
+    setIngresoForm({
+      categoria: ingreso.categoria,
+      monto: ingreso.monto,
+      fecha: ingreso.fecha,
+      descripcion: ingreso.descripcion ?? '',
+    })
+    setEditandoIngresoId(ingreso.id)
+    setShowFormIngreso(true)
   }
 
   async function handleAddGasto(event) {
@@ -488,16 +546,35 @@ export function Finanzas() {
     setError('')
     setSubmitting(true)
     try {
-      await api.post('/finanzas/gastos/', gastoForm)
-      recordarCategoria('gastos', gastoForm.categoria)
-      setGastoForm((f) => ({ ...f, monto: '', descripcion: '' }))
+      if (editandoGastoId) {
+        await api.patch(`/finanzas/gastos/${editandoGastoId}/`, gastoForm)
+        setEditandoGastoId(null)
+        setShowFormGasto(false)
+        setGastoForm(nuevoMovimientoForm('gastos'))
+        flashSuccess('Gasto actualizado')
+      } else {
+        await api.post('/finanzas/gastos/', gastoForm)
+        recordarCategoria('gastos', gastoForm.categoria)
+        setGastoForm((f) => ({ ...f, monto: '', descripcion: '' }))
+        flashSuccess('Gasto agregado')
+      }
       load()
-      flashSuccess('Gasto agregado')
     } catch (err) {
-      setError(getErrorMessage(err, 'Error al agregar gasto'))
+      setError(getErrorMessage(err, 'Error al guardar el gasto'))
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function iniciarEdicionGasto(gasto) {
+    setGastoForm({
+      categoria: gasto.categoria,
+      monto: gasto.monto,
+      fecha: gasto.fecha,
+      descripcion: gasto.descripcion ?? '',
+    })
+    setEditandoGastoId(gasto.id)
+    setShowFormGasto(true)
   }
 
   async function handleAddDeuda(event) {
@@ -511,17 +588,39 @@ export function Finanzas() {
       if (!payload.pago_periodico) delete payload.pago_periodico
       if (!payload.dia_pago) delete payload.dia_pago
       if (!payload.notas) delete payload.notas
-      await api.post('/finanzas/deudas/', payload)
-      recordarCategoria('deudas', deudaForm.categoria)
+      if (editandoDeudaId) {
+        await api.patch(`/finanzas/deudas/${editandoDeudaId}/`, payload)
+        setEditandoDeudaId(null)
+        flashSuccess('Deuda actualizada')
+      } else {
+        await api.post('/finanzas/deudas/', payload)
+        recordarCategoria('deudas', deudaForm.categoria)
+        flashSuccess('Deuda registrada')
+      }
       setDeudaForm(nuevaDeudaForm())
       setShowFormDeuda(false)
       load()
-      flashSuccess('Deuda registrada')
     } catch (err) {
-      setError(getErrorMessage(err, 'Error al registrar deuda'))
+      setError(getErrorMessage(err, 'Error al guardar la deuda'))
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function iniciarEdicionDeuda(deuda) {
+    setDeudaForm({
+      categoria: deuda.categoria,
+      acreedor: deuda.acreedor,
+      monto_original: deuda.monto_original,
+      fecha_inicio: deuda.fecha_inicio,
+      fecha_vencimiento: deuda.fecha_vencimiento ?? '',
+      tasa_interes_anual: deuda.tasa_interes_anual ?? '',
+      pago_periodico: deuda.pago_periodico ?? '',
+      dia_pago: deuda.dia_pago ?? '',
+      notas: deuda.notas ?? '',
+    })
+    setEditandoDeudaId(deuda.id)
+    setShowFormDeuda(true)
   }
 
   async function handleDeleteIngreso(id) {
@@ -568,7 +667,7 @@ export function Finanzas() {
     setGastosDisponibles([])
     const [historial, gastosDisp] = await Promise.all([
       api.get(`/finanzas/deudas/${deuda.id}/pagos/`),
-      api.get('/finanzas/gastos/', { sin_pago_deuda: 'true' }),
+      api.get('/finanzas/gastos/', { sin_pago_deuda: 'true', page_size: 200 }),
     ])
     setPagoHistorial(historial.results ?? historial)
     setGastosDisponibles(gastosDisp.results ?? gastosDisp)
@@ -624,7 +723,7 @@ export function Finanzas() {
       }
       const [historial, gastosDisp] = await Promise.all([
         api.get(`/finanzas/deudas/${pagoModal.id}/pagos/`),
-        api.get('/finanzas/gastos/', { sin_pago_deuda: 'true' }),
+        api.get('/finanzas/gastos/', { sin_pago_deuda: 'true', page_size: 200 }),
       ])
       setPagoHistorial(historial.results ?? historial)
       setGastosDisponibles(gastosDisp.results ?? gastosDisp)
@@ -651,8 +750,9 @@ export function Finanzas() {
 
   if (loading) return <p>Cargando…</p>
 
-  const totalIngresos = ingresos.reduce((sum, i) => sum + parseFloat(i.monto || 0), 0)
-  const totalGastos = gastos.reduce((sum, g) => sum + parseFloat(g.monto || 0), 0)
+  // Totales del backend: la lista visible es solo una página, sumarla mentiría
+  const totalIngresos = parseFloat(totales.total_ingresos || 0)
+  const totalGastos = parseFloat(totales.total_gastos || 0)
   const totalDeuda = deudaResumen.total_deuda || 0
 
   const categoriaDeudaSeleccionada = categoriaDeudas.find((c) => String(c.id) === String(deudaForm.categoria))
@@ -665,7 +765,7 @@ export function Finanzas() {
   const deltaBalance = deltaPorcentaje(mesActual?.ganancia, mesAnterior?.ganancia)
   const deltaIngresos = deltaPorcentaje(mesActual?.total_ingresos, mesAnterior?.total_ingresos)
   const deltaGastos = deltaPorcentaje(mesActual?.total_gastos, mesAnterior?.total_gastos)
-  const deudasActivas = deudas.filter((d) => d.estado === 'activa').length
+  const deudasActivas = deudaResumen.deudas_activas ?? 0
   const vencUrgentes = proximosVencimientos.filter((v) => v.dias_restantes !== null && v.dias_restantes <= 7)
   const tendenciaData = [...dashboard].reverse().map((d) => ({
     mes: d.mes,
@@ -676,7 +776,7 @@ export function Finanzas() {
   const colorIngresoPorNombre = Object.fromEntries(categoriaIngresos.map((c) => [c.nombre, c.color]))
   const mayorGasto = resumenGastosCategoria.find((r) => parseFloat(r.total) > 0)
   const mayorIngreso = resumenCategoria.find((r) => parseFloat(r.total) > 0)
-  const dashboardVacio = ingresos.length === 0 && gastos.length === 0 && deudas.length === 0
+  const dashboardVacio = countIngresos === 0 && countGastos === 0 && countDeudas === 0
 
   return (
     <div>
@@ -722,7 +822,7 @@ export function Finanzas() {
 
           {showFormIngreso && (
             <Card style={{ marginBottom: 20 }}>
-              <h3 style={{ marginTop: 0 }}>Nuevo Ingreso</h3>
+              <h3 style={{ marginTop: 0 }}>{editandoIngresoId ? 'Editar Ingreso' : 'Nuevo Ingreso'}</h3>
               <form className={styles.form} onSubmit={handleAddIngreso}>
                 <div className={styles.row}>
                   <Field label="Monto">
@@ -758,9 +858,19 @@ export function Finanzas() {
                 </MasOpciones>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Button type="submit" disabled={submitting}>
-                    <Plus size={16} style={{ marginRight: '8px' }} /> Registrar ingreso
+                    {editandoIngresoId
+                      ? 'Guardar cambios'
+                      : <><Plus size={16} style={{ marginRight: '8px' }} /> Registrar ingreso</>}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setShowFormIngreso(false)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowFormIngreso(false)
+                      setEditandoIngresoId(null)
+                      setIngresoForm(nuevoMovimientoForm('ingresos'))
+                    }}
+                  >
                     Cerrar
                   </Button>
                 </div>
@@ -797,13 +907,26 @@ export function Finanzas() {
                   key: 'acciones',
                   header: '',
                   render: (i) => (
-                    <Button variant="danger" onClick={() => setConfirmDeleteIngreso(i.id)}>
-                      <Trash2 size={16} />
-                    </Button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Button variant="secondary" onClick={() => iniciarEdicionIngreso(i)}>
+                        <Pencil size={16} />
+                      </Button>
+                      <Button variant="danger" onClick={() => setConfirmDeleteIngreso(i.id)}>
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
                   ),
                 },
               ]}
               rows={ingresos}
+            />
+            <Paginacion
+              page={pageIngresos}
+              count={countIngresos}
+              onPage={(p) => {
+                setPageIngresos(p)
+                loadIngresos(p)
+              }}
             />
           </Card>
         </div>
@@ -825,7 +948,7 @@ export function Finanzas() {
 
           {showFormGasto && (
             <Card style={{ marginBottom: 20 }}>
-              <h3 style={{ marginTop: 0 }}>Nuevo Gasto</h3>
+              <h3 style={{ marginTop: 0 }}>{editandoGastoId ? 'Editar Gasto' : 'Nuevo Gasto'}</h3>
               <form className={styles.form} onSubmit={handleAddGasto}>
                 <div className={styles.row}>
                   <Field label="Monto">
@@ -861,9 +984,19 @@ export function Finanzas() {
                 </MasOpciones>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Button type="submit" disabled={submitting}>
-                    <Plus size={16} style={{ marginRight: '8px' }} /> Registrar gasto
+                    {editandoGastoId
+                      ? 'Guardar cambios'
+                      : <><Plus size={16} style={{ marginRight: '8px' }} /> Registrar gasto</>}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setShowFormGasto(false)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowFormGasto(false)
+                      setEditandoGastoId(null)
+                      setGastoForm(nuevoMovimientoForm('gastos'))
+                    }}
+                  >
                     Cerrar
                   </Button>
                 </div>
@@ -900,13 +1033,26 @@ export function Finanzas() {
                   key: 'acciones',
                   header: '',
                   render: (g) => (
-                    <Button variant="danger" onClick={() => setConfirmDeleteGasto(g.id)}>
-                      <Trash2 size={16} />
-                    </Button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Button variant="secondary" onClick={() => iniciarEdicionGasto(g)}>
+                        <Pencil size={16} />
+                      </Button>
+                      <Button variant="danger" onClick={() => setConfirmDeleteGasto(g.id)}>
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
                   ),
                 },
               ]}
               rows={gastos}
+            />
+            <Paginacion
+              page={pageGastos}
+              count={countGastos}
+              onPage={(p) => {
+                setPageGastos(p)
+                loadGastos(p)
+              }}
             />
           </Card>
         </div>
@@ -928,7 +1074,7 @@ export function Finanzas() {
 
           {showFormDeuda && (
             <Card style={{ marginBottom: 20 }}>
-              <h3 style={{ marginTop: 0 }}>Nueva Deuda</h3>
+              <h3 style={{ marginTop: 0 }}>{editandoDeudaId ? 'Editar Deuda' : 'Nueva Deuda'}</h3>
               <form className={styles.form} onSubmit={handleAddDeuda}>
                 <div className={styles.row}>
                   <Field label="Monto original">
@@ -1041,9 +1187,19 @@ export function Finanzas() {
 
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Button type="submit" disabled={submitting}>
-                    <Plus size={16} style={{ marginRight: '8px' }} /> Registrar deuda
+                    {editandoDeudaId
+                      ? 'Guardar cambios'
+                      : <><Plus size={16} style={{ marginRight: '8px' }} /> Registrar deuda</>}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setShowFormDeuda(false)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => {
+                      setShowFormDeuda(false)
+                      setEditandoDeudaId(null)
+                      setDeudaForm(nuevaDeudaForm())
+                    }}
+                  >
                     Cerrar
                   </Button>
                 </div>
@@ -1139,6 +1295,9 @@ export function Finanzas() {
                       <Button variant="secondary" onClick={() => abrirPagoModal(d)}>
                         Pagos
                       </Button>
+                      <Button variant="secondary" onClick={() => iniciarEdicionDeuda(d)}>
+                        <Pencil size={16} />
+                      </Button>
                       <Button variant="danger" onClick={() => setConfirmDeleteDeuda(d)}>
                         <Trash2 size={16} />
                       </Button>
@@ -1147,6 +1306,14 @@ export function Finanzas() {
                 },
               ]}
               rows={deudas}
+            />
+            <Paginacion
+              page={pageDeudas}
+              count={countDeudas}
+              onPage={(p) => {
+                setPageDeudas(p)
+                loadDeudas(p)
+              }}
             />
           </Card>
         </div>

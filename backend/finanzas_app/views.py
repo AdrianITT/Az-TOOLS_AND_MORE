@@ -29,6 +29,7 @@ class CategoriaIngresoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 
     queryset = CategoriaIngreso.objects.all()
     serializer_class = CategoriaIngresoSerializer
+    pagination_class = None  # lista acotada: los selects necesitan todas
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
@@ -36,6 +37,7 @@ class CategoriaIngresoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     }
     filterset_fields = []
     search_fields = ['nombre']
+    ordering = ['nombre']
 
 
 class IngresoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
@@ -66,6 +68,7 @@ class CategoriaGastoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 
     queryset = CategoriaGasto.objects.all()
     serializer_class = CategoriaGastoSerializer
+    pagination_class = None
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
@@ -73,6 +76,7 @@ class CategoriaGastoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     }
     filterset_fields = []
     search_fields = ['nombre']
+    ordering = ['nombre']
 
 
 class GastoViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
@@ -141,6 +145,25 @@ class AnalizarRecibosView(APIView):
 
         resultados = [analizar_recibo(data, nombre, contexto=contexto) for data, nombre in contenidos]
         return Response(resultados)
+
+
+class FinanzasTotalesView(APIView):
+    """Totales de todo el histórico, calculados en la BD.
+
+    Los encabezados de las pestañas los usaban sumando la lista visible,
+    que con paginación solo contiene la primera página — mentía a partir
+    del registro 21."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        org = request.user.organization
+        total_ingresos = Ingreso.objects.filter(organization=org).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+        total_gastos = Gasto.objects.filter(organization=org).aggregate(t=Sum('monto'))['t'] or Decimal('0')
+        return Response({
+            'total_ingresos': str(total_ingresos),
+            'total_gastos': str(total_gastos),
+        })
 
 
 class FinanzasDashboardView(APIView):
@@ -333,12 +356,14 @@ class GastosPorDiaView(APIView):
 class CategoriaDeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     queryset = CategoriaDeuda.objects.all()
     serializer_class = CategoriaDeudaSerializer
+    pagination_class = None
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
         'partial_update': 'editar', 'destroy': 'eliminar',
     }
     search_fields = ['nombre']
+    ordering = ['nombre']
 
 
 class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
@@ -421,6 +446,7 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         )
         data = {
             'total_deuda': total,
+            'deudas_activas': deudas_activas.count(),
             'por_categoria': [
                 {
                     'categoria': r['categoria__nombre'],

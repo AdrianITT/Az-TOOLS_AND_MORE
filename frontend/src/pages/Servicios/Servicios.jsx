@@ -7,6 +7,7 @@ import { Table } from '../../components/ui/Table'
 import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
+import { Paginacion } from '../../components/ui/Paginacion'
 import formStyles from '../shared-form.module.css'
 import styles from './Servicios.module.css'
 
@@ -21,21 +22,32 @@ export function Servicios() {
   const [error, setError] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
+  const [page, setPage] = useState(1)
+  const [count, setCount] = useState(0)
+
   useEffect(() => {
-    api.get('/atributos-plantilla/').then((data) => setAtributos(data.results ?? data))
+    api.get('/atributos-plantilla/', { page_size: 200 }).then((data) => setAtributos(data.results ?? data))
   }, [])
+
+  // Al cambiar un filtro se vuelve a la página 1
+  useEffect(() => {
+    setPage(1)
+  }, [search, categoriaFiltro, activoFiltro])
 
   useEffect(() => {
     setLoading(true)
     const handle = setTimeout(() => {
       api
-        .get('/servicios/', { search, categoria: categoriaFiltro, activo: activoFiltro })
-        .then((data) => setServicios(data.results ?? data))
+        .get('/servicios/', { search, categoria: categoriaFiltro, activo: activoFiltro, page })
+        .then((data) => {
+          setServicios(data.results ?? data)
+          setCount(data.count ?? (data.results ?? data).length)
+        })
         .catch(() => setError('No se pudieron cargar los servicios'))
         .finally(() => setLoading(false))
     }, 300)
     return () => clearTimeout(handle)
-  }, [search, categoriaFiltro, activoFiltro])
+  }, [search, categoriaFiltro, activoFiltro, page])
 
   const atributosById = useMemo(() => {
     const map = {}
@@ -133,6 +145,7 @@ export function Servicios() {
           rows={servicios}
         />
       )}
+      <Paginacion page={page} count={count} onPage={setPage} />
 
       <ConfirmDialog
         open={confirmDeleteId !== null}
