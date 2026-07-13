@@ -59,6 +59,48 @@ services:
     ports:
       - "${HTTP_PORT:-80}:80"
 
+  # Respaldo diario: pg_dump de la BD + tar del volumen de media,
+  # a una carpeta del host (fuera de los volúmenes Docker), retención 14 días.
+  # OJO: vive en el mismo disco físico — protege contra borrados/corrupción,
+  # no contra falla del disco. Segunda copia (USB/Drive) pendiente.
+  db-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-aztools}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-aztools}
+      PGDATABASE: ${POSTGRES_DB:-aztools}
+    volumes:
+      - media:/media-src:ro
+      - ${BACKUP_DIR:-/home/adrian/respaldos-aztools}:/respaldos
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          FECHA=$$(date +%Y-%m-%d_%H%M)
+          echo "[db-backup] Respaldando base de datos..."
+          if pg_dump -Fc -f "/respaldos/db_$${FECHA}.dump"; then
+            echo "[db-backup] BD OK: db_$${FECHA}.dump"
+          else
+            echo "[db-backup] ERROR en pg_dump"
+          fi
+          echo "[db-backup] Respaldando media (comprobantes, logos)..."
+          if tar -czf "/respaldos/media_$${FECHA}.tar.gz" -C /media-src .; then
+            echo "[db-backup] Media OK: media_$${FECHA}.tar.gz"
+          else
+            echo "[db-backup] ERROR en tar de media"
+          fi
+          echo "[db-backup] Aplicando retención de 14 días..."
+          find /respaldos -name 'db_*.dump' -mtime +14 -delete
+          find /respaldos -name 'media_*.tar.gz' -mtime +14 -delete
+          echo "[db-backup] Listo. Próximo respaldo en 24h."
+          sleep 86400
+        done
+
 volumes:
   postgres_data:
   media:

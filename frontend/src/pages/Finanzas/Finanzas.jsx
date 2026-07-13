@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend,
@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/ui/EmptyState'
 import { Modal } from '../../components/ui/Modal'
 import { Trash2, Plus, Wallet, Eye, AlertTriangle, CheckSquare, Square, ChevronDown, ChevronRight, Settings, Camera } from 'lucide-react'
 import { MasOpciones, InputMonto } from '../../components/ui/FormExtras'
+import { CategoriaInline, TIPO_AMORTIZACION_OPTIONS } from '../../components/ui/CategoriaInline'
 import { EscanearRecibos } from './EscanearRecibos'
 import styles from '../shared-form.module.css'
 
@@ -92,79 +93,10 @@ const HINT_TIPO_AMORTIZACION = {
   cuenta_por_pagar: 'Cuenta por pagar: normalmente sin interés, con una fecha de vencimiento concreta.',
 }
 
-const TIPO_AMORTIZACION_OPTIONS = [
-  { value: 'revolvente', label: 'Revolvente (tarjeta, línea de crédito)' },
-  { value: 'cuotas_fijas', label: 'Cuotas fijas (préstamo, hipoteca)' },
-  { value: 'cuenta_por_pagar', label: 'Cuenta por pagar (proveedor, impuesto)' },
-]
 
 const ESTADO_LABELS = { activa: 'Activa', pagada: 'Pagada', vencida: 'Vencida' }
 const ESTADO_COLORS = { activa: '#27ae60', pagada: '#7f8c8d', vencida: '#e74c3c' }
 
-/** Mini-formulario inline para crear una categoría sin desmontar el formulario padre.
- *  Es un <div> (no <form>) porque vive anidado dentro del formulario del movimiento. */
-function CategoriaInline({ conTipo = false, onCrear, onCancelar }) {
-  const [nombre, setNombre] = useState('')
-  const [color, setColor] = useState(conTipo ? '#e74c3c' : '#3498db')
-  const [tipo, setTipo] = useState('cuotas_fijas')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  async function crear() {
-    if (!nombre.trim()) {
-      setError('Escribí un nombre para la categoría')
-      return
-    }
-    setError('')
-    setSaving(true)
-    try {
-      await onCrear(conTipo ? { nombre, color, tipo_amortizacion: tipo } : { nombre, color })
-    } catch (err) {
-      setError(getErrorMessage(err, 'No se pudo crear la categoría'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div style={{
-      border: '1.5px dashed var(--color-primary, #3498db)', borderRadius: 8, padding: 12,
-      display: 'flex', flexDirection: 'column', gap: 10,
-    }}>
-      <strong style={{ fontSize: 13 }}>Nueva categoría</strong>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Input
-          value={nombre}
-          onChange={(e) => setNombre(e.target.value)}
-          placeholder="Nombre de la categoría"
-          autoFocus
-          style={{ flex: 2, minWidth: 140 }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              crear()
-            }
-          }}
-        />
-        <Input type="color" value={color} onChange={(e) => setColor(e.target.value)} style={{ width: 48, height: 38, padding: 2, flexShrink: 0 }} />
-        {conTipo && (
-          <Select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ flex: 2, minWidth: 200 }}>
-            {TIPO_AMORTIZACION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
-        )}
-        <Button type="button" onClick={crear} disabled={saving}>
-          Crear
-        </Button>
-        <Button type="button" variant="secondary" onClick={onCancelar}>
-          Cancelar
-        </Button>
-      </div>
-      {error && <p className={styles.error}>{error}</p>}
-    </div>
-  )
-}
 
 function CategoriasManager({ categorias, onDeleteRequest }) {
   return (
@@ -372,6 +304,9 @@ export function Finanzas() {
   const [gastosDisponibles, setGastosDisponibles] = useState([])
   const [submittingPago, setSubmittingPago] = useState(false)
   const [errorPago, setErrorPago] = useState('')
+  const [pagoComprobante, setPagoComprobante] = useState(null)
+  const [analizandoPago, setAnalizandoPago] = useState(false)
+  const pagoFileRef = useRef(null)
 
   function load() {
     setLoading(true)
@@ -488,6 +423,19 @@ export function Finanzas() {
     setDeudaForm((f) => ({ ...f, categoria: nueva.id }))
     setCreatingCategoriaDeuda(false)
     flashSuccess('Categoría de deuda creada')
+  }
+
+  // Crear categoría desde las cards del modal de escaneo, sin tocar los forms de las pestañas
+  async function crearCategoriaDesdeEscaneo(tipo, datos) {
+    const endpoint =
+      tipo === 'ingreso' ? '/finanzas/categorias-ingresos/'
+      : tipo === 'deuda' ? '/finanzas/categorias-deudas/'
+      : '/finanzas/categorias-gastos/'
+    const nueva = await api.post(endpoint, datos)
+    if (tipo === 'ingreso') setCategoriaIngresos((c) => [...c, nueva])
+    else if (tipo === 'deuda') setCategoriaDeudas((c) => [...c, nueva])
+    else setCategoriaGastos((c) => [...c, nueva])
+    return nueva
   }
 
   async function handleDeleteCategoria() {
@@ -614,6 +562,7 @@ export function Finanzas() {
   async function abrirPagoModal(deuda) {
     setPagoModal(deuda)
     setPagoForm(nuevoPagoForm())
+    setPagoComprobante(null)
     setErrorPago('')
     setPagoHistorial([])
     setGastosDisponibles([])
@@ -625,17 +574,54 @@ export function Finanzas() {
     setGastosDisponibles(gastosDisp.results ?? gastosDisp)
   }
 
+  // Escanear/adjuntar comprobante de pago: OCR pre-llena monto y fecha, la foto queda adjunta
+  async function analizarComprobantePago(file) {
+    if (!file) return
+    setErrorPago('')
+    setAnalizandoPago(true)
+    try {
+      const form = new FormData()
+      form.append('imagenes', file)
+      const token = localStorage.getItem('token')
+      const res = await fetch('/api/finanzas/recibos/analizar/', {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: form,
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw Object.assign(new Error('analizar'), { data })
+      const r = data[0]
+      setPagoComprobante(file)
+      setPagoForm((f) => ({ ...f, monto: r.monto ?? f.monto, fecha: r.fecha ?? f.fecha }))
+    } catch (err) {
+      setErrorPago(getErrorMessage(err, 'No se pudo analizar el comprobante'))
+    } finally {
+      setAnalizandoPago(false)
+    }
+  }
+
   async function handleRegistrarPago(event) {
     event.preventDefault()
     setErrorPago('')
     setSubmittingPago(true)
     try {
-      await api.post(`/finanzas/deudas/${pagoModal.id}/pagos/`, {
-        monto: pagoForm.monto,
-        fecha: pagoForm.fecha,
-        notas: pagoForm.notas,
-        gastos_cubiertos_ids: pagoForm.gastos_cubiertos_ids,
+      // Multipart para poder adjuntar el comprobante junto con el pago
+      const form = new FormData()
+      form.append('monto', pagoForm.monto)
+      form.append('fecha', pagoForm.fecha)
+      form.append('notas', pagoForm.notas || '')
+      pagoForm.gastos_cubiertos_ids.forEach((id) => form.append('gastos_cubiertos_ids', id))
+      if (pagoComprobante) form.append('comprobante', pagoComprobante)
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api/finanzas/deudas/${pagoModal.id}/pagos/`, {
+        method: 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: form,
       })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw Object.assign(new Error('pago'), { data })
+      }
       const [historial, gastosDisp] = await Promise.all([
         api.get(`/finanzas/deudas/${pagoModal.id}/pagos/`),
         api.get('/finanzas/gastos/', { sin_pago_deuda: 'true' }),
@@ -643,6 +629,7 @@ export function Finanzas() {
       setPagoHistorial(historial.results ?? historial)
       setGastosDisponibles(gastosDisp.results ?? gastosDisp)
       setPagoForm(nuevoPagoForm())
+      setPagoComprobante(null)
       load()
       flashSuccess('Pago registrado')
     } catch (err) {
@@ -929,7 +916,10 @@ export function Finanzas() {
       {activeTab === 'Deudas' && (
         <div>
           {!showFormDeuda && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginBottom: 16 }}>
+              <Button variant="secondary" onClick={() => setEscanearTipo('deuda')}>
+                <Camera size={16} style={{ marginRight: 8 }} /> Escanear factura
+              </Button>
               <Button onClick={() => setShowFormDeuda(true)}>
                 <Plus size={16} style={{ marginRight: 8 }} /> Registrar deuda
               </Button>
@@ -1140,6 +1130,7 @@ export function Finanzas() {
                     </span>
                   ),
                 },
+                { key: 'comprobante', header: 'Factura', render: (d) => <MiniaturaComprobante url={d.comprobante} /> },
                 {
                   key: 'acciones',
                   header: '',
@@ -1448,6 +1439,28 @@ export function Finanzas() {
                   onChange={(e) => setPagoForm((f) => ({ ...f, notas: e.target.value }))}
                 />
               </Field>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <input
+                  ref={pagoFileRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    analizarComprobantePago(e.target.files[0])
+                    e.target.value = ''
+                  }}
+                />
+                <Button type="button" variant="secondary" onClick={() => pagoFileRef.current?.click()} disabled={analizandoPago}>
+                  <Camera size={16} style={{ marginRight: 6 }} />
+                  {analizandoPago ? 'Analizando…' : pagoComprobante ? 'Cambiar comprobante' : 'Escanear comprobante'}
+                </Button>
+                {pagoComprobante && (
+                  <span style={{ fontSize: 13, color: '#27ae60', fontWeight: 600 }}>
+                    ✓ {pagoComprobante.name} adjunto
+                  </span>
+                )}
+              </div>
               {gastosDisponibles.length > 0 && (
                 <Field label="Gastos que cubre este pago (opcional)">
                   <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #ddd', borderRadius: 4, padding: 8 }}>
@@ -1501,6 +1514,7 @@ export function Finanzas() {
                           : '—',
                     },
                     { key: 'notas', header: 'Notas', render: (p) => p.notas || '—' },
+                    { key: 'comprobante', header: 'Comprobante', render: (p) => <MiniaturaComprobante url={p.comprobante} /> },
                   ]}
                   rows={pagoHistorial}
                 />
@@ -1557,10 +1571,13 @@ export function Finanzas() {
 
       <EscanearRecibos
         open={escanearTipo !== null}
-        tipoInicial={escanearTipo ?? 'gasto'}
+        modo={escanearTipo === 'deuda' ? 'deuda' : 'movimiento'}
+        tipoInicial={escanearTipo === 'ingreso' ? 'ingreso' : 'gasto'}
         onClose={() => setEscanearTipo(null)}
         categoriaIngresos={categoriaIngresos}
         categoriaGastos={categoriaGastos}
+        categoriaDeudas={categoriaDeudas}
+        onCrearCategoria={crearCategoriaDesdeEscaneo}
         onRegistrado={load}
       />
     </div>

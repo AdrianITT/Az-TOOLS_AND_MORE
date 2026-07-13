@@ -193,6 +193,7 @@ class Deuda(models.Model):
     fecha_vencimiento = models.DateField(null=True, blank=True)
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default='activa')
     notas = models.TextField(blank=True, default='')
+    comprobante = models.ImageField(upload_to='comprobantes/', null=True, blank=True)
     creado_por = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name='deudas_creadas'
     )
@@ -219,6 +220,7 @@ class PagoDeuda(models.Model):
     saldo_resultante = models.DecimalField(max_digits=14, decimal_places=2)
     gastos_cubiertos = models.ManyToManyField(Gasto, blank=True, related_name='pagos_deuda')
     notas = models.TextField(blank=True, default='')
+    comprobante = models.ImageField(upload_to='comprobantes/', null=True, blank=True)
     creado_por = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name='pagos_deuda_creados'
     )

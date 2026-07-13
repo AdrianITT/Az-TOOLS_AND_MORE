@@ -105,10 +105,11 @@ class CategoriaDeudaSerializer(_CategoriaUniquePorOrgMixin, serializers.ModelSer
         read_only_fields = ['id', 'creado']
 
 
-class DeudaSerializer(serializers.ModelSerializer):
+class DeudaSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
     categoria_nombre = serializers.CharField(source='categoria.nombre', read_only=True)
     categoria_color = serializers.CharField(source='categoria.color', read_only=True)
     categoria_tipo = serializers.CharField(source='categoria.tipo_amortizacion', read_only=True)
+    comprobante = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Deuda
@@ -116,7 +117,7 @@ class DeudaSerializer(serializers.ModelSerializer):
             'id', 'categoria', 'categoria_nombre', 'categoria_color', 'categoria_tipo',
             'acreedor', 'monto_original', 'saldo_actual',
             'tasa_interes_anual', 'pago_periodico', 'dia_pago',
-            'fecha_inicio', 'fecha_vencimiento', 'estado', 'notas',
+            'fecha_inicio', 'fecha_vencimiento', 'estado', 'notas', 'comprobante',
             'creado_por', 'creado', 'actualizado',
         ]
         read_only_fields = ['id', 'creado_por', 'creado', 'actualizado']
@@ -144,18 +145,19 @@ class GastoBriefSerializer(serializers.ModelSerializer):
         fields = ['id', 'monto', 'fecha', 'descripcion', 'categoria_nombre']
 
 
-class PagoDeudaSerializer(serializers.ModelSerializer):
+class PagoDeudaSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
     gastos_cubiertos_ids = serializers.PrimaryKeyRelatedField(
         queryset=Gasto.objects.all(), many=True, write_only=True, required=False, source='gastos_cubiertos'
     )
     gastos_cubiertos = GastoBriefSerializer(many=True, read_only=True)
+    comprobante = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = PagoDeuda
         fields = [
             'id', 'fecha', 'monto', 'saldo_resultante',
             'gastos_cubiertos', 'gastos_cubiertos_ids',
-            'notas', 'creado_por', 'creado',
+            'notas', 'comprobante', 'creado_por', 'creado',
         ]
         read_only_fields = ['id', 'saldo_resultante', 'creado_por', 'creado']
 

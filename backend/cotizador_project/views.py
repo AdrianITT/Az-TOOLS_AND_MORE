@@ -421,6 +421,17 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
 
+class LogoutView(APIView):
+    """Revoca el token de autenticación del usuario (cierre de sesión real)."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.auth is not None:
+            request.auth.delete()
+        return Response(status=204)
+
+
 class RegistroOrganizacionView(APIView):
     """Endpoint público: crea una Organization nueva junto con su primer usuario admin."""
 

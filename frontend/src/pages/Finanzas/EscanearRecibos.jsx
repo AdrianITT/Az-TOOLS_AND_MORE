@@ -5,7 +5,10 @@ import { Button } from '../../components/ui/Button'
 import { Field, Input, Select } from '../../components/ui/Input'
 import { Modal } from '../../components/ui/Modal'
 import { MasOpciones, InputMonto } from '../../components/ui/FormExtras'
+import { CategoriaInline } from '../../components/ui/CategoriaInline'
 import styles from '../shared-form.module.css'
+
+const NUEVA_CATEGORIA = '__nueva__'
 
 const CONFIANZA = {
   alta: { label: 'Detección buena', color: '#27ae60' },
@@ -18,7 +21,16 @@ function hoyISO() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categoriaIngresos, categoriaGastos, onRegistrado }) {
+/**
+ * Modal de escaneo OCR. `modo`:
+ * - 'movimiento': tickets → gastos/ingresos (cada card elige tipo y categoría)
+ * - 'deuda': facturas a crédito → deudas (acreedor + vencimiento)
+ */
+export function EscanearRecibos({
+  open, onClose, modo = 'movimiento', tipoInicial = 'gasto',
+  categoriaIngresos, categoriaGastos, categoriaDeudas = [],
+  onCrearCategoria, onRegistrado,
+}) {
   const [cards, setCards] = useState([])
   const [analizando, setAnalizando] = useState(false)
   const [error, setError] = useState('')
@@ -50,7 +62,8 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
       const form = new FormData()
       files.forEach((f) => form.append('imagenes', f))
       const token = localStorage.getItem('token')
-      const res = await fetch('/api/finanzas/recibos/analizar/', {
+      const contexto = modo === 'deuda' ? '?contexto=deuda' : ''
+      const res = await fetch(`/api/finanzas/recibos/analizar/${contexto}`, {
         method: 'POST',
         headers: { Authorization: `Token ${token}` },
         body: form,
@@ -67,9 +80,12 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
           preview: URL.createObjectURL(files[i]),
           monto: r.monto ?? '',
           fecha: r.fecha ?? hoyISO(),
-          descripcion: r.comercio ?? '',
-          tipo: tipoInicial,
+          fechaVencimiento: r.fecha_vencimiento ?? '',
+          descripcion: modo === 'deuda' ? '' : (r.comercio ?? ''),
+          acreedor: r.comercio ?? '',
+          tipo: modo === 'deuda' ? 'deuda' : tipoInicial,
           categoria: '',
+          creandoCategoria: false,
           textoCrudo: r.texto_crudo,
           confianza: r.confianza,
           estado: 'pendiente',
@@ -87,17 +103,33 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
     setCards((cs) => cs.map((c) => (c.key === key ? { ...c, ...cambios } : c)))
   }
 
+  async function crearCategoriaEnCard(card, datos) {
+    const nueva = await onCrearCategoria(card.tipo, datos)
+    updateCard(card.key, { categoria: nueva.id, creandoCategoria: false })
+  }
+
   async function registrar(card) {
     updateCard(card.key, { estado: 'registrando', errorCard: '' })
     try {
-      const endpoint = card.tipo === 'ingreso' ? '/api/finanzas/ingresos/' : '/api/finanzas/gastos/'
-      // Multipart: el movimiento viaja junto con la foto como comprobante
+      // Multipart: el registro viaja junto con la foto como comprobante
       const form = new FormData()
       form.append('categoria', card.categoria)
-      form.append('monto', card.monto)
-      form.append('fecha', card.fecha)
-      form.append('descripcion', card.descripcion || '')
+      let endpoint
+      if (card.tipo === 'deuda') {
+        endpoint = '/api/finanzas/deudas/'
+        form.append('acreedor', card.acreedor)
+        form.append('monto_original', card.monto)
+        form.append('fecha_inicio', card.fecha)
+        if (card.fechaVencimiento) form.append('fecha_vencimiento', card.fechaVencimiento)
+        if (card.descripcion) form.append('notas', card.descripcion)
+      } else {
+        endpoint = card.tipo === 'ingreso' ? '/api/finanzas/ingresos/' : '/api/finanzas/gastos/'
+        form.append('monto', card.monto)
+        form.append('fecha', card.fecha)
+        form.append('descripcion', card.descripcion || '')
+      }
       if (card.file) form.append('comprobante', card.file)
+
       const token = localStorage.getItem('token')
       const res = await fetch(endpoint, {
         method: 'POST',
@@ -119,17 +151,34 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
     setCards((cs) => cs.filter((c) => c.key !== key))
   }
 
+  function categoriasDe(card) {
+    if (card.tipo === 'deuda') return categoriaDeudas
+    return card.tipo === 'ingreso' ? categoriaIngresos : categoriaGastos
+  }
+
+  function puedeRegistrar(card) {
+    if (!card.monto || !card.categoria || !card.fecha) return false
+    if (card.tipo === 'deuda' && !card.acreedor) return false
+    return true
+  }
+
+  const esDeuda = modo === 'deuda'
   const pendientes = cards.filter((c) => c.estado !== 'registrado').length
+  const titulo = esDeuda ? 'Escanear facturas a crédito' : 'Escanear recibos'
 
   return (
-    <Modal open={open} title="Escanear recibos" onClose={handleClose} wide>
+    <Modal open={open} title={titulo} onClose={handleClose} wide>
       <div>
         {cards.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '28px 12px' }}>
             <Camera size={40} color="#3498db" style={{ marginBottom: 10 }} />
-            <p style={{ margin: '0 0 6px', fontWeight: 600 }}>Subí o fotografiá tus recibos</p>
+            <p style={{ margin: '0 0 6px', fontWeight: 600 }}>
+              {esDeuda ? 'Subí o fotografiá tus facturas a crédito' : 'Subí o fotografiá tus recibos'}
+            </p>
             <p style={{ color: '#888', fontSize: 13, margin: '0 0 18px' }}>
-              Hasta 10 imágenes por tanda. Se detectan monto, fecha y comercio — vos revisás y confirmás cada uno.
+              {esDeuda
+                ? 'Hasta 10 imágenes. Se detectan monto, acreedor, emisión y vencimiento — vos revisás y confirmás.'
+                : 'Hasta 10 imágenes por tanda. Se detectan monto, fecha y comercio — vos revisás y confirmás cada uno.'}
             </p>
             <input
               ref={inputRef}
@@ -146,7 +195,7 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
             </Button>
             {analizando && (
               <p style={{ color: '#888', fontSize: 13, marginTop: 12 }}>
-                Leyendo los recibos… esto toma unos segundos por imagen.
+                Leyendo las imágenes… esto toma unos segundos por imagen.
               </p>
             )}
             {error && <p className={styles.error} style={{ marginTop: 12 }}>{error}</p>}
@@ -155,13 +204,13 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <p style={{ margin: 0, color: '#888', fontSize: 13 }}>
               {pendientes === 0
-                ? '¡Todos los recibos quedaron registrados!'
-                : `${cards.length} recibo(s) analizados — revisá cada uno, asigná la categoría y registralo.`}
+                ? '¡Todo registrado!'
+                : `${cards.length} imagen(es) analizadas — revisá cada una y registrala.`}
             </p>
 
             {cards.map((card) => {
               const conf = CONFIANZA[card.confianza] ?? CONFIANZA.baja
-              const categorias = card.tipo === 'ingreso' ? categoriaIngresos : categoriaGastos
+              const categorias = categoriasDe(card)
               const registrado = card.estado === 'registrado'
               return (
                 <div
@@ -188,14 +237,14 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
                     {!registrado && (
                       <>
                         <div className={styles.row}>
-                          <Field label="Monto">
+                          <Field label={card.tipo === 'deuda' ? 'Monto original' : 'Monto'}>
                             <InputMonto
                               value={card.monto}
                               onChange={(e) => updateCard(card.key, { monto: e.target.value })}
                               style={card.monto === '' ? { borderColor: '#e74c3c' } : undefined}
                             />
                           </Field>
-                          <Field label="Fecha">
+                          <Field label={card.tipo === 'deuda' ? 'Fecha de emisión' : 'Fecha'}>
                             <Input
                               type="date"
                               value={card.fecha}
@@ -203,33 +252,74 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
                             />
                           </Field>
                         </div>
+
+                        {card.tipo === 'deuda' && (
+                          <div className={styles.row}>
+                            <Field label="Acreedor">
+                              <Input
+                                value={card.acreedor}
+                                onChange={(e) => updateCard(card.key, { acreedor: e.target.value })}
+                                placeholder="Proveedor, banco…"
+                              />
+                            </Field>
+                            <Field label="Fecha de vencimiento" hint={card.fechaVencimiento ? 'Detectada del documento' : 'No detectada — opcional'}>
+                              <Input
+                                type="date"
+                                value={card.fechaVencimiento}
+                                onChange={(e) => updateCard(card.key, { fechaVencimiento: e.target.value })}
+                              />
+                            </Field>
+                          </div>
+                        )}
+
                         <div className={styles.row}>
-                          <Field label="Tipo">
-                            <Select
-                              value={card.tipo}
-                              onChange={(e) => updateCard(card.key, { tipo: e.target.value, categoria: '' })}
-                            >
-                              <option value="gasto">Gasto</option>
-                              <option value="ingreso">Ingreso</option>
-                            </Select>
-                          </Field>
+                          {card.tipo !== 'deuda' && (
+                            <Field label="Tipo">
+                              <Select
+                                value={card.tipo}
+                                onChange={(e) => updateCard(card.key, { tipo: e.target.value, categoria: '', creandoCategoria: false })}
+                              >
+                                <option value="gasto">Gasto</option>
+                                <option value="ingreso">Ingreso</option>
+                              </Select>
+                            </Field>
+                          )}
                           <Field label="Categoría">
                             <Select
                               value={card.categoria}
-                              onChange={(e) => updateCard(card.key, { categoria: e.target.value })}
+                              onChange={(e) => {
+                                const value = e.target.value
+                                if (value === NUEVA_CATEGORIA) {
+                                  updateCard(card.key, { creandoCategoria: true })
+                                  return
+                                }
+                                updateCard(card.key, { categoria: value })
+                              }}
                             >
                               <option value="">Seleccionar…</option>
                               {categorias.map((c) => (
-                                <option key={c.id} value={c.id}>{c.nombre}</option>
+                                <option key={c.id} value={c.id}>
+                                  {c.icono ? `${c.icono} ` : ''}{c.nombre}
+                                </option>
                               ))}
+                              <option value={NUEVA_CATEGORIA}>+ Nueva categoría</option>
                             </Select>
                           </Field>
                         </div>
-                        <Field label="Descripción">
+
+                        {card.creandoCategoria && (
+                          <CategoriaInline
+                            conTipo={card.tipo === 'deuda'}
+                            onCrear={(datos) => crearCategoriaEnCard(card, datos)}
+                            onCancelar={() => updateCard(card.key, { creandoCategoria: false })}
+                          />
+                        )}
+
+                        <Field label={card.tipo === 'deuda' ? 'Notas' : 'Descripción'}>
                           <Input
                             value={card.descripcion}
                             onChange={(e) => updateCard(card.key, { descripcion: e.target.value })}
-                            placeholder="Comercio / concepto"
+                            placeholder={card.tipo === 'deuda' ? 'Opcional' : 'Comercio / concepto'}
                           />
                         </Field>
                         <MasOpciones etiqueta="Ver texto detectado">
@@ -248,7 +338,7 @@ export function EscanearRecibos({ open, onClose, tipoInicial = 'gasto', categori
                         <div style={{ display: 'flex', gap: 10 }}>
                           <Button
                             onClick={() => registrar(card)}
-                            disabled={card.estado === 'registrando' || !card.monto || !card.categoria || !card.fecha}
+                            disabled={card.estado === 'registrando' || !puedeRegistrar(card)}
                           >
                             <Check size={16} style={{ marginRight: 6 }} />
                             {card.estado === 'registrando' ? 'Registrando…' : `Registrar ${card.tipo}`}

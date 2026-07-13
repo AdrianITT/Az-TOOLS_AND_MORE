@@ -354,3 +354,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 >>>>>>> 1a9d6e99118ccc3d502d54f76a95e3ea0c11068d
+# Django build artifacts
+backend/staticfiles/

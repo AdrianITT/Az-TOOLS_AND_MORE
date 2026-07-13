@@ -1,7 +1,7 @@
 """Tests del parsing de recibos (texto → datos). No requieren imágenes ni BD."""
 from django.test import SimpleTestCase
 
-from .services.ocr_recibos import detectar_comercio, detectar_fecha, detectar_monto
+from .services.ocr_recibos import detectar_comercio, detectar_fecha, detectar_fechas_deuda, detectar_monto
 
 TICKET_OXXO = """OXXO SUC CENTRO
 AV JUAREZ 123 COL CENTRO
@@ -65,6 +65,53 @@ class DetectarFechaTests(SimpleTestCase):
 
     def test_fecha_futura_descartada(self):
         self.assertIsNone(detectar_fecha('VENCE 31/12/2099'))
+
+
+FACTURA_VENCE_ETIQUETADO = """DISTRIBUIDORA XYZ SA DE CV
+FACTURA A-1042
+FECHA: 05/07/2026
+MERCANCIA VARIA
+TOTAL $ 12,500.00
+VENCE: 20/08/2026
+"""
+
+FACTURA_CREDITO_DIAS = """PROVEEDORA DEL NORTE
+FECHA 01/07/2026
+CREDITO 30 DIAS
+IMPORTE TOTAL 8,000.00
+"""
+
+FACTURA_SOLO_FUTURA = """MATERIALES ABC
+Emision: 08/07/2026
+Pago: 15/09/2026
+TOTAL 3,200.00
+"""
+
+
+class DetectarFechasDeudaTests(SimpleTestCase):
+    def test_vencimiento_etiquetado(self):
+        r = detectar_fechas_deuda(FACTURA_VENCE_ETIQUETADO)
+        self.assertEqual(r['emision'], '2026-07-05')
+        self.assertEqual(r['vencimiento'], '2026-08-20')
+
+    def test_credito_n_dias(self):
+        r = detectar_fechas_deuda(FACTURA_CREDITO_DIAS)
+        self.assertEqual(r['emision'], '2026-07-01')
+        self.assertEqual(r['vencimiento'], '2026-07-31')
+
+    def test_futura_sin_etiqueta_es_vencimiento(self):
+        r = detectar_fechas_deuda(FACTURA_SOLO_FUTURA)
+        self.assertEqual(r['emision'], '2026-07-08')
+        self.assertEqual(r['vencimiento'], '2026-09-15')
+
+    def test_ticket_sin_vencimiento(self):
+        r = detectar_fechas_deuda(TICKET_OXXO)
+        self.assertEqual(r['emision'], '2026-07-10')
+        self.assertIsNone(r['vencimiento'])
+
+    def test_parser_de_movimientos_sigue_descartando_futuras(self):
+        # La factura con vencimiento futuro NO debe contaminar detectar_fecha
+        self.assertEqual(detectar_fecha(FACTURA_VENCE_ETIQUETADO), '2026-07-05')
 
 
 class DetectarComercioTests(SimpleTestCase):

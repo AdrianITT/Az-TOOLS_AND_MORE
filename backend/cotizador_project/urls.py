@@ -16,6 +16,7 @@ router.register(r'invitaciones', views.InvitacionViewSet, basename='invitacion')
 
 urlpatterns = [
     path('auth/login/', obtain_auth_token, name='api_token_auth'),
+    path('auth/logout/', views.LogoutView.as_view(), name='api_token_logout'),
     path('auth/me/', views.MeView.as_view(), name='auth_me'),
     path('organizaciones/registro/', views.RegistroOrganizacionView.as_view(), name='registro_organizacion'),
     path('organizacion/', views.OrganizacionActualView.as_view(), name='organizacion_actual'),

@@ -105,40 +105,95 @@ def detectar_monto(texto):
     return None
 
 
-def _construir_fecha(dia, mes, anio):
+def _fecha_valida(dia, mes, anio):
     if anio < 100:
         anio += 2000
     try:
-        f = date(anio, mes, dia)
+        return date(anio, mes, dia)
     except ValueError:
         return None
-    # Un ticket no viene del futuro lejano ni de hace décadas
-    hoy = date.today()
-    if f > hoy or (hoy - f).days > 365 * 3:
-        return None
-    return f
+
+
+def _todas_las_fechas(texto):
+    """Todas las fechas parseables con el índice de línea donde aparecen."""
+    lineas = texto.splitlines()
+    fechas = []
+    for idx, linea in enumerate(lineas):
+        for match in FECHA_NUMERICA_RE.finditer(linea):
+            dia, mes, anio = (int(g) for g in match.groups())
+            f = _fecha_valida(dia, mes, anio)
+            if f:
+                fechas.append((f, idx))
+        for match in FECHA_TEXTO_RE.finditer(linea.upper()):
+            dia, mes_txt, anio = match.groups()
+            f = _fecha_valida(int(dia), MESES[mes_txt[:3]], int(anio))
+            if f:
+                fechas.append((f, idx))
+    return fechas, lineas
 
 
 def detectar_fecha(texto):
-    """Fecha del ticket (formato mexicano dd/mm/yyyy o '10 JUL 2026').
-    Si hay varias, la más reciente. None si no hay válidas."""
-    candidatas = []
-
-    for match in FECHA_NUMERICA_RE.finditer(texto):
-        dia, mes, anio = (int(g) for g in match.groups())
-        f = _construir_fecha(dia, mes, anio)
-        if f:
-            candidatas.append(f)
-
-    for match in FECHA_TEXTO_RE.finditer(texto.upper()):
-        dia, mes_txt, anio = match.groups()
-        f = _construir_fecha(int(dia), MESES[mes_txt[:3]], int(anio))
-        if f:
-            candidatas.append(f)
-
+    """Fecha de un ticket (movimiento): la pasada más reciente.
+    Un ticket no viene del futuro ni de hace décadas — esas se descartan."""
+    hoy = date.today()
+    candidatas = [
+        f for f, _ in _todas_las_fechas(texto)[0]
+        if f <= hoy and (hoy - f).days <= 365 * 3
+    ]
     if not candidatas:
         return None
     return max(candidatas).isoformat()
+
+
+# Etiquetas de vencimiento en facturas a crédito
+ETIQUETAS_VENCIMIENTO = (
+    'VENCE', 'VENCIMIENTO', 'FECHA LIMITE', 'FECHA LÍMITE',
+    'PAGO ANTES DE', 'PAGAR ANTES DE', 'FECHA DE PAGO',
+)
+CREDITO_DIAS_RE = re.compile(r'CR[EÉ]DITO\s*(?:A\s*)?(\d{1,3})\s*D[IÍ]AS')
+
+
+def detectar_fechas_deuda(texto):
+    """Para facturas a crédito: separa emisión (pasada) de vencimiento (normalmente
+    futura — lo contrario de un ticket). Prioridad del vencimiento:
+    1) fecha junto a una etiqueta VENCE/FECHA LÍMITE/… (misma línea o la anterior),
+    2) la fecha futura más próxima,
+    3) 'CRÉDITO N DÍAS' → emisión + N."""
+    from datetime import timedelta
+
+    hoy = date.today()
+    fechas, lineas = _todas_las_fechas(texto)
+
+    etiquetadas, no_etiquetadas = [], []
+    for f, idx in fechas:
+        if (hoy - f).days > 365 * 3 or (f - hoy).days > 365 * 2:
+            continue
+        linea_u = lineas[idx].upper()
+        previa_u = lineas[idx - 1].upper() if idx > 0 else ''
+        if any(e in linea_u or e in previa_u for e in ETIQUETAS_VENCIMIENTO):
+            etiquetadas.append(f)
+        else:
+            no_etiquetadas.append(f)
+
+    pasadas = [f for f in no_etiquetadas if f <= hoy]
+    emision = max(pasadas) if pasadas else None
+
+    if etiquetadas:
+        vencimiento = max(etiquetadas)
+    else:
+        futuras = [f for f in no_etiquetadas if f > hoy]
+        if futuras:
+            vencimiento = min(futuras)  # el vencimiento más próximo
+        else:
+            vencimiento = None
+            match = CREDITO_DIAS_RE.search(texto.upper())
+            if match and emision:
+                vencimiento = emision + timedelta(days=int(match.group(1)))
+
+    return {
+        'emision': emision.isoformat() if emision else None,
+        'vencimiento': vencimiento.isoformat() if vencimiento else None,
+    }
 
 
 def detectar_comercio(texto):
@@ -154,13 +209,23 @@ def detectar_comercio(texto):
     return None
 
 
-def analizar_recibo(file_bytes, nombre_archivo):
+def analizar_recibo(file_bytes, nombre_archivo, contexto='movimiento'):
     """Pipeline completo para una imagen. Nunca inventa valores: lo que no se
-    detecta viaja como None y el usuario lo completa a mano."""
+    detecta viaja como None y el usuario lo completa a mano.
+
+    contexto='movimiento' (ticket → gasto/ingreso) o 'deuda' (factura a crédito:
+    además separa fecha de emisión y de vencimiento)."""
     texto = extraer_texto(file_bytes)
     monto = detectar_monto(texto)
-    fecha = detectar_fecha(texto)
     comercio = detectar_comercio(texto)
+
+    if contexto == 'deuda':
+        fechas = detectar_fechas_deuda(texto)
+        fecha = fechas['emision']
+        vencimiento = fechas['vencimiento']
+    else:
+        fecha = detectar_fecha(texto)
+        vencimiento = None
 
     if monto and fecha:
         confianza = 'alta'
@@ -169,7 +234,7 @@ def analizar_recibo(file_bytes, nombre_archivo):
     else:
         confianza = 'baja'
 
-    return {
+    resultado = {
         'archivo': nombre_archivo,
         'monto': monto,
         'fecha': fecha,
@@ -177,3 +242,6 @@ def analizar_recibo(file_bytes, nombre_archivo):
         'texto_crudo': texto,
         'confianza': confianza,
     }
+    if contexto == 'deuda':
+        resultado['fecha_vencimiento'] = vencimiento
+    return resultado

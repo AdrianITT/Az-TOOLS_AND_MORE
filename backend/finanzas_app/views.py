@@ -118,6 +118,10 @@ class AnalizarRecibosView(APIView):
         from PIL import Image, UnidentifiedImageError
         from .services.ocr_recibos import analizar_recibo
 
+        contexto = request.query_params.get('contexto', 'movimiento')
+        if contexto not in ('movimiento', 'deuda'):
+            raise ValidationError({'contexto': 'Debe ser "movimiento" o "deuda".'})
+
         imagenes = request.FILES.getlist('imagenes')
         if not imagenes:
             raise ValidationError({'imagenes': 'Subí al menos una imagen.'})
@@ -135,7 +139,7 @@ class AnalizarRecibosView(APIView):
                 raise ValidationError({'imagenes': f'"{f.name}" no es una imagen válida.'})
             contenidos.append((data, f.name))
 
-        resultados = [analizar_recibo(data, nombre) for data, nombre in contenidos]
+        resultados = [analizar_recibo(data, nombre, contexto=contexto) for data, nombre in contenidos]
         return Response(resultados)
 
 
@@ -340,6 +344,7 @@ class CategoriaDeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     queryset = Deuda.objects.select_related('categoria').all()
     serializer_class = DeudaSerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
@@ -388,6 +393,7 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
             monto=monto,
             saldo_resultante=nuevo_saldo,
             notas=serializer.validated_data.get('notas', ''),
+            comprobante=serializer.validated_data.get('comprobante'),
             creado_por=request.user,
         )
         if gastos_cubiertos:
