@@ -1,6 +1,8 @@
 # Análisis de Mejora Continua — Az-TOOLS_AND_MORE
 
-> **Estado:** análisis entregado (2026-07-12). **Ola 1 completa (2026-07-13):** ✅ commit git, ✅ C2 respaldos (db-backup diario, restauración verificada; **pendiente segunda copia en USB/Drive**), ✅ C1 paginación real + totales del backend (`/finanzas/totales/`, componente `Paginacion` en Finanzas/Clientes/Cotizaciones/Servicios, categorías sin paginar, `page_size` para selects/checklists), ✅ C3 editar ingresos/gastos/deudas desde la UI, ✅ T4 ordering. Pendientes: Olas 2-3.
+> **Estado:** análisis entregado (2026-07-12). **Ola 1 completa (2026-07-13):** ✅ commit git, ✅ C2 respaldos (db-backup diario, restauración verificada; **pendiente segunda copia en USB/Drive**), ✅ C1 paginación real + totales del backend, ✅ C3 editar movimientos, ✅ T4 ordering.
+>
+> **Ola 2 completa (2026-07-13):** ✅ N1 cotización aceptada → ingreso (FK con anti-duplicado, botón en la franja de estado), ✅ N4 export CSV (ingresos/gastos/deudas/mensual, BOM para Excel), ✅ N2-mínimo botón Duplicar movimiento, ✅ N6 comprobante adjunto en captura manual, ✅ N3 badge rojo de vencimientos ≤7 días en el sidebar (refresco c/10 min). Pendientes de Ola 2: U2 Cloudflare Tunnel (requiere decisión de dominio), N2 completo (recurrentes automáticos), N3 por email (requiere proveedor). Pendiente: Ola 3.
 
 Análisis del sistema completo con ojos de mejora continua: exactitud de datos, valor de negocio, experiencia de uso, y salud técnica. Ordenado por lo que más importa, no por lo más vistoso.
 

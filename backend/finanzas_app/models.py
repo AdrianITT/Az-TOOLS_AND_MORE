@@ -48,6 +48,14 @@ class Ingreso(models.Model):
     fecha = models.DateField()
     descripcion = models.TextField(blank=True, null=True)
     comprobante = models.ImageField(upload_to='comprobantes/', null=True, blank=True)
+    # Trazabilidad cotizador ↔ finanzas: el ingreso que registró una cotización aceptada
+    cotizacion = models.ForeignKey(
+        'cotizador_project.Cotizacion',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='ingresos',
+    )
     creado_por = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

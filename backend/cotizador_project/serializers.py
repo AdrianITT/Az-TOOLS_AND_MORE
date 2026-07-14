@@ -218,6 +218,11 @@ class CotizacionDetalleSerializer(serializers.ModelSerializer):
 class CotizacionSerializer(serializers.ModelSerializer):
     items = CotizacionDetalleSerializer(many=True, read_only=True)
     iva_porcentaje = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0)
+    # True si ya se registró como ingreso en Finanzas (evita doble registro)
+    ingreso_registrado = serializers.SerializerMethodField()
+
+    def get_ingreso_registrado(self, obj):
+        return obj.ingresos.exists()
 
     class Meta:
         model = Cotizacion
@@ -225,6 +230,7 @@ class CotizacionSerializer(serializers.ModelSerializer):
             'id', 'organization', 'cliente', 'usuario_creador', 'numero',
             'descripcion', 'estado', 'subtotal', 'iva_porcentaje', 'impuesto', 'total',
             'fecha_vencimiento', 'creado', 'actualizado', 'items', 'token_publico',
+            'ingreso_registrado',
         ]
         read_only_fields = [
             'id', 'organization', 'usuario_creador', 'numero',

@@ -147,6 +147,68 @@ class AnalizarRecibosView(APIView):
         return Response(resultados)
 
 
+class ExportarCSVView(APIView):
+    """Exporta movimientos a CSV (con BOM para que Excel abra bien los acentos).
+
+    ?tipo=ingresos | gastos | deudas | mensual
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import csv
+        from django.http import HttpResponse
+
+        tipo = request.query_params.get('tipo', 'gastos')
+        org = request.user.organization
+        hoy = timezone.now().date().isoformat()
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{tipo}_{hoy}.csv"'
+        response.write('\ufeff')  # BOM: Excel interpreta UTF-8 correctamente
+        writer = csv.writer(response)
+
+        if tipo == 'ingresos':
+            writer.writerow(['Fecha', 'Categoría', 'Monto', 'Descripción', 'Cotización'])
+            qs = Ingreso.objects.filter(organization=org).select_related('categoria', 'cotizacion').order_by('-fecha')
+            for i in qs.iterator():
+                writer.writerow([i.fecha, i.categoria.nombre, i.monto, i.descripcion or '', i.cotizacion.numero if i.cotizacion else ''])
+        elif tipo == 'gastos':
+            writer.writerow(['Fecha', 'Categoría', 'Monto', 'Descripción'])
+            qs = Gasto.objects.filter(organization=org).select_related('categoria').order_by('-fecha')
+            for g in qs.iterator():
+                writer.writerow([g.fecha, g.categoria.nombre, g.monto, g.descripcion or ''])
+        elif tipo == 'deudas':
+            writer.writerow(['Acreedor', 'Categoría', 'Monto original', 'Saldo actual', 'Inicio', 'Vencimiento', 'Estado', 'Notas'])
+            qs = Deuda.objects.filter(organization=org).select_related('categoria').order_by('-creado')
+            for d in qs.iterator():
+                writer.writerow([
+                    d.acreedor, d.categoria.nombre, d.monto_original, d.saldo_actual,
+                    d.fecha_inicio, d.fecha_vencimiento or '', d.get_estado_display(), d.notas or '',
+                ])
+        elif tipo == 'mensual':
+            from django.db.models.functions import TruncMonth
+            writer.writerow(['Mes', 'Ingresos', 'Gastos', 'Ganancia'])
+            ing = dict(
+                Ingreso.objects.filter(organization=org)
+                .annotate(mes=TruncMonth('fecha')).values_list('mes')
+                .annotate(t=Sum('monto')).values_list('mes', 't')
+            )
+            gas = dict(
+                Gasto.objects.filter(organization=org)
+                .annotate(mes=TruncMonth('fecha')).values_list('mes')
+                .annotate(t=Sum('monto')).values_list('mes', 't')
+            )
+            for mes in sorted(set(ing) | set(gas), reverse=True):
+                ti = ing.get(mes) or Decimal('0')
+                tg = gas.get(mes) or Decimal('0')
+                writer.writerow([mes.strftime('%Y-%m'), ti, tg, ti - tg])
+        else:
+            raise ValidationError({'tipo': 'Debe ser ingresos, gastos, deudas o mensual.'})
+
+        return response
+
+
 class FinanzasTotalesView(APIView):
     """Totales de todo el histórico, calculados en la BD.
 

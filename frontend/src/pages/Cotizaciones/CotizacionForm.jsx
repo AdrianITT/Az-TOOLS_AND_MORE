@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Share2, MessageCircle, Mail, QrCode, Download, PlusCircle, CheckCircle2, Circle, PenLine } from 'lucide-react'
+import { Share2, MessageCircle, Mail, QrCode, Download, PlusCircle, CheckCircle2, Circle, PenLine, Wallet } from 'lucide-react'
 import { api, getErrorMessage } from '../../api/client'
 import { PageHeader } from '../PageHeader'
 import { Card } from '../../components/ui/Card'
@@ -106,6 +106,14 @@ export function CotizacionForm() {
   const [qrPng, setQrPng] = useState(null)
   const [qrLoading, setQrLoading] = useState(false)
   const [qrError, setQrError] = useState('')
+
+  // Registrar la cotización aceptada como ingreso en Finanzas
+  const [registrandoIngreso, setRegistrandoIngreso] = useState(false)
+  const [categoriasIngreso, setCategoriasIngreso] = useState([])
+  const [ingresoCategoria, setIngresoCategoria] = useState('')
+  const [ingresoFecha, setIngresoFecha] = useState('')
+  const [ingresoSubmitting, setIngresoSubmitting] = useState(false)
+  const [ingresoError, setIngresoError] = useState('')
 
   const itemSubtotal = (Number(itemForm.cantidad) || 0) * (Number(itemForm.precio_unitario) || 0)
   const isItemPending = Boolean(itemForm.servicio)
@@ -353,6 +361,47 @@ export function CotizacionForm() {
     }
   }
 
+  function hoyISO() {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }
+
+  async function abrirRegistroIngreso() {
+    setIngresoError('')
+    setIngresoFecha(hoyISO())
+    setRegistrandoIngreso(true)
+    try {
+      const cats = await api.get('/finanzas/categorias-ingresos/')
+      const lista = cats.results ?? cats
+      setCategoriasIngreso(lista)
+      if (lista.length === 1) setIngresoCategoria(lista[0].id)
+    } catch {
+      setIngresoError('No se pudieron cargar las categorías de ingresos')
+    }
+  }
+
+  async function registrarComoIngreso(event) {
+    event.preventDefault()
+    setIngresoError('')
+    setIngresoSubmitting(true)
+    try {
+      await api.post('/finanzas/ingresos/', {
+        categoria: ingresoCategoria,
+        monto: cotizacion.total,
+        fecha: ingresoFecha,
+        descripcion: `Cotización ${cotizacion.numero} — ${clientesById[form.cliente]?.nombre ?? ''}`.trim(),
+        cotizacion: id,
+      })
+      setRegistrandoIngreso(false)
+      await refreshCotizacion()
+      flashSuccess('Ingreso registrado en Finanzas')
+    } catch (err) {
+      setIngresoError(getErrorMessage(err, 'No se pudo registrar el ingreso'))
+    } finally {
+      setIngresoSubmitting(false)
+    }
+  }
+
   async function generarQR() {
     setQrModalOpen(true)
     setQrLoading(true)
@@ -470,6 +519,49 @@ export function CotizacionForm() {
               <strong>Total: ${cotizacion.total}</strong>
             </div>
           </div>
+
+          {/* Cotización aceptada → ingreso en Finanzas (cierra el ciclo del negocio) */}
+          {cotizacion.estado === 'aceptada' && (
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+              {cotizacion.ingreso_registrado ? (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#27ae60', fontWeight: 600, fontSize: 14 }}>
+                  <CheckCircle2 size={16} /> Registrada como ingreso en Finanzas
+                </span>
+              ) : !registrandoIngreso ? (
+                <Button type="button" onClick={abrirRegistroIngreso}>
+                  <Wallet size={16} style={{ marginRight: 8 }} /> Registrar como ingreso en Finanzas
+                </Button>
+              ) : (
+                <form onSubmit={registrarComoIngreso} className={formStyles.form}>
+                  <div className={formStyles.row}>
+                    <Field label="Categoría del ingreso">
+                      <Select value={ingresoCategoria} onChange={(e) => setIngresoCategoria(e.target.value)} required>
+                        <option value="">Seleccionar…</option>
+                        {categoriasIngreso.map((c) => (
+                          <option key={c.id} value={c.id}>{c.nombre}</option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Fecha del ingreso">
+                      <Input type="date" value={ingresoFecha} onChange={(e) => setIngresoFecha(e.target.value)} required />
+                    </Field>
+                  </div>
+                  <p style={{ margin: 0, color: '#888', fontSize: 13 }}>
+                    Se registrará un ingreso de <strong>${cotizacion.total}</strong> vinculado a esta cotización.
+                  </p>
+                  {ingresoError && <p className={formStyles.error}>{ingresoError}</p>}
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <Button type="submit" disabled={ingresoSubmitting || !ingresoCategoria}>
+                      {ingresoSubmitting ? 'Registrando…' : 'Confirmar ingreso'}
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={() => setRegistrandoIngreso(false)}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
         </Card>
       )}
 

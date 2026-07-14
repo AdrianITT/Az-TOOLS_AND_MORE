@@ -12,7 +12,7 @@ import { Field, Input, Select } from '../../components/ui/Input'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { Modal } from '../../components/ui/Modal'
-import { Trash2, Plus, Wallet, Eye, AlertTriangle, CheckSquare, Square, ChevronDown, ChevronRight, Settings, Camera, Pencil } from 'lucide-react'
+import { Trash2, Plus, Wallet, Eye, AlertTriangle, CheckSquare, Square, ChevronDown, ChevronRight, Settings, Camera, Pencil, Copy, Download, Paperclip, X } from 'lucide-react'
 import { Paginacion } from '../../components/ui/Paginacion'
 import { MasOpciones, InputMonto } from '../../components/ui/FormExtras'
 import { CategoriaInline, TIPO_AMORTIZACION_OPTIONS } from '../../components/ui/CategoriaInline'
@@ -287,6 +287,12 @@ export function Finanzas() {
   const [editandoIngresoId, setEditandoIngresoId] = useState(null)
   const [editandoGastoId, setEditandoGastoId] = useState(null)
   const [editandoDeudaId, setEditandoDeudaId] = useState(null)
+
+  // Comprobante adjunto en captura manual (N6)
+  const [comprobIngreso, setComprobIngreso] = useState(null)
+  const [comprobGasto, setComprobGasto] = useState(null)
+  const fileIngresoRef = useRef(null)
+  const fileGastoRef = useRef(null)
   const [escanearTipo, setEscanearTipo] = useState(null) // 'gasto' | 'ingreso' | null
   const [error, setError] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -504,19 +510,65 @@ export function Finanzas() {
     }
   }
 
+  // Guarda un movimiento; con comprobante adjunto va como multipart
+  async function guardarMovimiento(tipo, form, file, editandoId) {
+    const base = `/finanzas/${tipo}/`
+    if (file) {
+      const fd = new FormData()
+      fd.append('categoria', form.categoria)
+      fd.append('monto', form.monto)
+      fd.append('fecha', form.fecha)
+      fd.append('descripcion', form.descripcion || '')
+      fd.append('comprobante', file)
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api${base}${editandoId ? `${editandoId}/` : ''}`, {
+        method: editandoId ? 'PATCH' : 'POST',
+        headers: { Authorization: `Token ${token}` },
+        body: fd,
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw Object.assign(new Error('guardar'), { data })
+      }
+    } else if (editandoId) {
+      await api.patch(`${base}${editandoId}/`, form)
+    } else {
+      await api.post(base, form)
+    }
+  }
+
+  async function descargarCSV(tipo) {
+    try {
+      const token = localStorage.getItem('token')
+      const res = await fetch(`/api/finanzas/exportar/?tipo=${tipo}`, {
+        headers: { Authorization: `Token ${token}` },
+      })
+      if (!res.ok) throw new Error('export')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${tipo}_${hoyISO()}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('No se pudo exportar el CSV')
+    }
+  }
+
   async function handleAddIngreso(event) {
     event.preventDefault()
     setError('')
     setSubmitting(true)
     try {
+      await guardarMovimiento('ingresos', ingresoForm, comprobIngreso, editandoIngresoId)
+      setComprobIngreso(null)
       if (editandoIngresoId) {
-        await api.patch(`/finanzas/ingresos/${editandoIngresoId}/`, ingresoForm)
         setEditandoIngresoId(null)
         setShowFormIngreso(false)
         setIngresoForm(nuevoMovimientoForm('ingresos'))
         flashSuccess('Ingreso actualizado')
       } else {
-        await api.post('/finanzas/ingresos/', ingresoForm)
         recordarCategoria('ingresos', ingresoForm.categoria)
         // Conserva categoría y fecha para captura en ráfaga; limpia monto y descripción
         setIngresoForm((f) => ({ ...f, monto: '', descripcion: '' }))
@@ -528,6 +580,17 @@ export function Finanzas() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function iniciarDuplicadoIngreso(ingreso) {
+    setIngresoForm({
+      categoria: ingreso.categoria,
+      monto: ingreso.monto,
+      fecha: hoyISO(),
+      descripcion: ingreso.descripcion ?? '',
+    })
+    setEditandoIngresoId(null)
+    setShowFormIngreso(true)
   }
 
   function iniciarEdicionIngreso(ingreso) {
@@ -546,14 +609,14 @@ export function Finanzas() {
     setError('')
     setSubmitting(true)
     try {
+      await guardarMovimiento('gastos', gastoForm, comprobGasto, editandoGastoId)
+      setComprobGasto(null)
       if (editandoGastoId) {
-        await api.patch(`/finanzas/gastos/${editandoGastoId}/`, gastoForm)
         setEditandoGastoId(null)
         setShowFormGasto(false)
         setGastoForm(nuevoMovimientoForm('gastos'))
         flashSuccess('Gasto actualizado')
       } else {
-        await api.post('/finanzas/gastos/', gastoForm)
         recordarCategoria('gastos', gastoForm.categoria)
         setGastoForm((f) => ({ ...f, monto: '', descripcion: '' }))
         flashSuccess('Gasto agregado')
@@ -564,6 +627,17 @@ export function Finanzas() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  function iniciarDuplicadoGasto(gasto) {
+    setGastoForm({
+      categoria: gasto.categoria,
+      monto: gasto.monto,
+      fecha: hoyISO(),
+      descripcion: gasto.descripcion ?? '',
+    })
+    setEditandoGastoId(null)
+    setShowFormGasto(true)
   }
 
   function iniciarEdicionGasto(gasto) {
@@ -851,10 +925,35 @@ export function Finanzas() {
                     <Input type="date" value={ingresoForm.fecha} onChange={updateIngresoForm('fecha')} required />
                   </Field>
                 </div>
-                <MasOpciones etiqueta="Más opciones (descripción)">
+                <MasOpciones etiqueta="Más opciones (descripción, comprobante)">
                   <Field label="Descripción">
                     <Input value={ingresoForm.descripcion} onChange={updateIngresoForm('descripcion')} placeholder="Opcional" />
                   </Field>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <input
+                      ref={fileIngresoRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        setComprobIngreso(e.target.files[0] ?? null)
+                        e.target.value = ''
+                      }}
+                    />
+                    <Button type="button" variant="secondary" onClick={() => fileIngresoRef.current?.click()}>
+                      <Paperclip size={14} style={{ marginRight: 6 }} />
+                      {comprobIngreso ? 'Cambiar comprobante' : 'Adjuntar comprobante'}
+                    </Button>
+                    {comprobIngreso && (
+                      <span style={{ fontSize: 13, color: '#27ae60', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        ✓ {comprobIngreso.name}
+                        <button type="button" onClick={() => setComprobIngreso(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
+                          <X size={14} color="#888" />
+                        </button>
+                      </span>
+                    )}
+                  </div>
                 </MasOpciones>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Button type="submit" disabled={submitting}>
@@ -881,10 +980,15 @@ export function Finanzas() {
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <h3 style={{ margin: 0 }}>Total Ingresos: {formatMoneda(totalIngresos)}</h3>
-              <Button variant="secondary" onClick={() => setShowCategoriasIngreso((s) => !s)}>
-                <Settings size={14} style={{ marginRight: 6 }} />
-                {showCategoriasIngreso ? 'Ocultar categorías' : 'Gestionar categorías'}
-              </Button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button variant="secondary" onClick={() => descargarCSV('ingresos')}>
+                  <Download size={14} style={{ marginRight: 6 }} /> CSV
+                </Button>
+                <Button variant="secondary" onClick={() => setShowCategoriasIngreso((s) => !s)}>
+                  <Settings size={14} style={{ marginRight: 6 }} />
+                  {showCategoriasIngreso ? 'Ocultar categorías' : 'Gestionar categorías'}
+                </Button>
+              </div>
             </div>
             {showCategoriasIngreso && (
               <div style={{ marginBottom: 12 }}>
@@ -908,10 +1012,13 @@ export function Finanzas() {
                   header: '',
                   render: (i) => (
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <Button variant="secondary" onClick={() => iniciarEdicionIngreso(i)}>
+                      <Button variant="secondary" title="Editar" onClick={() => iniciarEdicionIngreso(i)}>
                         <Pencil size={16} />
                       </Button>
-                      <Button variant="danger" onClick={() => setConfirmDeleteIngreso(i.id)}>
+                      <Button variant="secondary" title="Duplicar con fecha de hoy" onClick={() => iniciarDuplicadoIngreso(i)}>
+                        <Copy size={16} />
+                      </Button>
+                      <Button variant="danger" title="Eliminar" onClick={() => setConfirmDeleteIngreso(i.id)}>
                         <Trash2 size={16} />
                       </Button>
                     </div>
@@ -977,10 +1084,35 @@ export function Finanzas() {
                     <Input type="date" value={gastoForm.fecha} onChange={updateGastoForm('fecha')} required />
                   </Field>
                 </div>
-                <MasOpciones etiqueta="Más opciones (descripción)">
+                <MasOpciones etiqueta="Más opciones (descripción, comprobante)">
                   <Field label="Descripción">
                     <Input value={gastoForm.descripcion} onChange={updateGastoForm('descripcion')} placeholder="Opcional" />
                   </Field>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <input
+                      ref={fileGastoRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        setComprobGasto(e.target.files[0] ?? null)
+                        e.target.value = ''
+                      }}
+                    />
+                    <Button type="button" variant="secondary" onClick={() => fileGastoRef.current?.click()}>
+                      <Paperclip size={14} style={{ marginRight: 6 }} />
+                      {comprobGasto ? 'Cambiar comprobante' : 'Adjuntar comprobante'}
+                    </Button>
+                    {comprobGasto && (
+                      <span style={{ fontSize: 13, color: '#27ae60', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        ✓ {comprobGasto.name}
+                        <button type="button" onClick={() => setComprobGasto(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'inline-flex' }}>
+                          <X size={14} color="#888" />
+                        </button>
+                      </span>
+                    )}
+                  </div>
                 </MasOpciones>
                 <div style={{ display: 'flex', gap: 10 }}>
                   <Button type="submit" disabled={submitting}>
@@ -1007,10 +1139,15 @@ export function Finanzas() {
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <h3 style={{ margin: 0 }}>Total Gastos: {formatMoneda(totalGastos)}</h3>
-              <Button variant="secondary" onClick={() => setShowCategoriasGasto((s) => !s)}>
-                <Settings size={14} style={{ marginRight: 6 }} />
-                {showCategoriasGasto ? 'Ocultar categorías' : 'Gestionar categorías'}
-              </Button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button variant="secondary" onClick={() => descargarCSV('gastos')}>
+                  <Download size={14} style={{ marginRight: 6 }} /> CSV
+                </Button>
+                <Button variant="secondary" onClick={() => setShowCategoriasGasto((s) => !s)}>
+                  <Settings size={14} style={{ marginRight: 6 }} />
+                  {showCategoriasGasto ? 'Ocultar categorías' : 'Gestionar categorías'}
+                </Button>
+              </div>
             </div>
             {showCategoriasGasto && (
               <div style={{ marginBottom: 12 }}>
@@ -1034,10 +1171,13 @@ export function Finanzas() {
                   header: '',
                   render: (g) => (
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <Button variant="secondary" onClick={() => iniciarEdicionGasto(g)}>
+                      <Button variant="secondary" title="Editar" onClick={() => iniciarEdicionGasto(g)}>
                         <Pencil size={16} />
                       </Button>
-                      <Button variant="danger" onClick={() => setConfirmDeleteGasto(g.id)}>
+                      <Button variant="secondary" title="Duplicar con fecha de hoy" onClick={() => iniciarDuplicadoGasto(g)}>
+                        <Copy size={16} />
+                      </Button>
+                      <Button variant="danger" title="Eliminar" onClick={() => setConfirmDeleteGasto(g.id)}>
                         <Trash2 size={16} />
                       </Button>
                     </div>
@@ -1210,10 +1350,15 @@ export function Finanzas() {
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
               <h3 style={{ margin: 0 }}>Deudas — Saldo total: <span style={{ color: '#e74c3c' }}>{formatMoneda(totalDeuda)}</span></h3>
-              <Button variant="secondary" onClick={() => setShowCategoriasDeuda((s) => !s)}>
-                <Settings size={14} style={{ marginRight: 6 }} />
-                {showCategoriasDeuda ? 'Ocultar categorías' : 'Gestionar categorías'}
-              </Button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <Button variant="secondary" onClick={() => descargarCSV('deudas')}>
+                  <Download size={14} style={{ marginRight: 6 }} /> CSV
+                </Button>
+                <Button variant="secondary" onClick={() => setShowCategoriasDeuda((s) => !s)}>
+                  <Settings size={14} style={{ marginRight: 6 }} />
+                  {showCategoriasDeuda ? 'Ocultar categorías' : 'Gestionar categorías'}
+                </Button>
+              </div>
             </div>
             {showCategoriasDeuda && (
               <div style={{ marginBottom: 12 }}>
@@ -1500,6 +1645,11 @@ export function Finanzas() {
               </SeccionColapsable>
 
               <SeccionColapsable titulo="Tabla mensual completa" resumen="Últimos 12 meses en detalle">
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+                  <Button variant="secondary" onClick={() => descargarCSV('mensual')}>
+                    <Download size={14} style={{ marginRight: 6 }} /> Exportar CSV
+                  </Button>
+                </div>
                 <Table
                   rowKey={(d) => d.mes}
                   emptyMessage="Sin datos"

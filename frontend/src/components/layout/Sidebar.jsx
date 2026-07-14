@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog, TrendingUp, FileStack, Building2, MapPin } from 'lucide-react'
+import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import styles from './Sidebar.module.css'
 
@@ -43,6 +45,27 @@ const NAV_GROUPS = [
 export function Sidebar({ open, onClose }) {
   const { user } = useAuth()
 
+  // Badge de vencimientos urgentes (≤7 días): la información con fecha límite
+  // busca al usuario, no espera a que abra el dashboard.
+  const [vencimientosUrgentes, setVencimientosUrgentes] = useState(0)
+  useEffect(() => {
+    let activo = true
+    function cargar() {
+      api
+        .get('/finanzas/deudas/proximos-vencimientos/', { dias: 7 })
+        .then((data) => {
+          if (activo) setVencimientosUrgentes((data.results ?? data).length)
+        })
+        .catch(() => {})
+    }
+    cargar()
+    const intervalo = setInterval(cargar, 10 * 60 * 1000) // refresco cada 10 min
+    return () => {
+      activo = false
+      clearInterval(intervalo)
+    }
+  }, [])
+
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items.filter((item) => !item.permiso || user?.[item.permiso]),
@@ -67,6 +90,19 @@ export function Sidebar({ open, onClose }) {
                 >
                   <item.icon size={17} strokeWidth={2} />
                   {item.label}
+                  {item.to === '/finanzas' && vencimientosUrgentes > 0 && (
+                    <span
+                      title={`${vencimientosUrgentes} pago(s) vencen en los próximos 7 días`}
+                      style={{
+                        marginLeft: 'auto', background: '#e74c3c', color: 'white',
+                        borderRadius: 999, fontSize: 11, fontWeight: 700,
+                        minWidth: 18, height: 18, display: 'inline-flex',
+                        alignItems: 'center', justifyContent: 'center', padding: '0 5px',
+                      }}
+                    >
+                      {vencimientosUrgentes}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>

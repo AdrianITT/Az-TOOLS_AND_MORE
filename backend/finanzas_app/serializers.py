@@ -44,8 +44,18 @@ class IngresoSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
 
     class Meta:
         model = Ingreso
-        fields = ['id', 'categoria', 'categoria_nombre', 'monto', 'fecha', 'descripcion', 'comprobante', 'creado_por', 'creado', 'actualizado']
+        fields = ['id', 'categoria', 'categoria_nombre', 'monto', 'fecha', 'descripcion', 'comprobante', 'cotizacion', 'creado_por', 'creado', 'actualizado']
         read_only_fields = ['id', 'creado_por', 'creado', 'actualizado']
+
+    def validate_cotizacion(self, value):
+        if value is None:
+            return value
+        request = self.context.get('request')
+        if request and value.organization_id != request.user.organization_id:
+            raise serializers.ValidationError('Cotización inválida.')
+        if value.ingresos.exists() and (self.instance is None or self.instance.cotizacion_id != value.id):
+            raise serializers.ValidationError('Esta cotización ya tiene un ingreso registrado.')
+        return value
 
 
 class CategoriaGastoSerializer(_CategoriaUniquePorOrgMixin, serializers.ModelSerializer):
