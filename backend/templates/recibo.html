@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #333; line-height: 1.5; }
+        .container { max-width: 800px; margin: 0 auto; padding: 40px; background: white; }
+
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; border-bottom: 1px solid #eee; padding-bottom: 20px; }
+        .logo { max-width: 120px; }
+        .logo img { max-width: 100%; height: auto; }
+        .titulo { text-align: right; }
+        .titulo h1 { font-size: 28px; color: #2c3e50; margin-bottom: 5px; }
+        .titulo p { font-size: 12px; color: #7f8c8d; }
+
+        .section { margin-bottom: 30px; }
+        .section-title { font-size: 11px; font-weight: 700; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+        .section-content { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; font-size: 13px; }
+        .field { }
+        .field-label { font-size: 11px; color: #95a5a6; text-transform: uppercase; margin-bottom: 3px; }
+        .field-value { font-weight: 500; color: #2c3e50; }
+
+        .items-table { width: 100%; margin: 30px 0; border-collapse: collapse; font-size: 13px; }
+        .items-table thead { background: #f8f9fa; }
+        .items-table th { padding: 12px; text-align: left; font-weight: 600; color: #2c3e50; border-bottom: 2px solid #ecf0f1; }
+        .items-table td { padding: 12px; border-bottom: 1px solid #ecf0f1; }
+        .items-table .text-right { text-align: right; }
+
+        .totales { margin: 30px 0; display: flex; justify-content: flex-end; }
+        .totales-box { width: 250px; }
+        .total-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #ecf0f1; font-size: 13px; }
+        .total-row.final { border-bottom: 2px solid #2c3e50; font-weight: 700; font-size: 14px; padding: 12px 0; }
+        .label { color: #7f8c8d; }
+        .amount { color: #2c3e50; text-align: right; min-width: 80px; }
+        .amount.paid { color: #27ae60; }
+        .amount.remaining { color: #e74c3c; }
+
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ecf0f1; text-align: center; font-size: 11px; color: #95a5a6; }
+        .descripcion { margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 3px solid #3498db; font-size: 13px; color: #2c3e50; }
+
+        .text-right { text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            {% if logo_url %}<div class="logo"><img src="{{ logo_url }}" alt="Logo"></div>{% endif %}
+            <div class="titulo">
+                <h1>RECIBO</h1>
+                <p>Nº {{ recibo.id }} · {{ recibo.fecha_creacion|date:"d/m/Y" }}</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">Información del recibo</div>
+            <div class="section-content">
+                <div class="field">
+                    <div class="field-label">Empresa</div>
+                    <div class="field-value">{{ empresa }}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">Cliente</div>
+                    <div class="field-value">{{ cliente }}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">Creado por</div>
+                    <div class="field-value">{{ creador }}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">Cantidad de personas</div>
+                    <div class="field-value">{{ recibo.cantidad_personas }}</div>
+                </div>
+            </div>
+        </div>
+
+        <table class="items-table">
+            <thead>
+                <tr>
+                    <th>Producto / Servicio</th>
+                    <th class="text-right">Cantidad</th>
+                    <th class="text-right">Valor unitario</th>
+                    <th class="text-right">Subtotal</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{ producto }}</td>
+                    <td class="text-right">{{ recibo.cantidad }}</td>
+                    <td class="text-right">${{ recibo.monto_total|add:"-"|add:recibo.cantidad|add:"|floatformat:2" }}</td>
+                    <td class="text-right"><strong>${{ recibo.monto_total|floatformat:2 }}</strong></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="totales">
+            <div class="totales-box">
+                <div class="total-row">
+                    <span class="label">Monto total</span>
+                    <span class="amount">${{ recibo.monto_total|floatformat:2 }}</span>
+                </div>
+                <div class="total-row">
+                    <span class="label">Monto pagado</span>
+                    <span class="amount paid">${{ recibo.monto_pagado|floatformat:2 }}</span>
+                </div>
+                <div class="total-row final">
+                    <span class="label">Monto restante</span>
+                    <span class="amount remaining">${{ monto_restante|floatformat:2 }}</span>
+                </div>
+            </div>
+        </div>
+
+        {% if recibo.descripcion %}
+        <div class="descripcion">
+            <strong>Notas:</strong> {{ recibo.descripcion }}
+        </div>
+        {% endif %}
+
+        <div class="footer">
+            <p>Generado el {{ recibo.creado|date:"d/m/Y H:i" }}</p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog, TrendingUp, FileStack, Building2, MapPin } from 'lucide-react'
+import { LayoutDashboard, Users, Package, FileText, Wallet, QrCode, UserCog, TrendingUp, FileStack, Building2, MapPin, Receipt } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import styles from './Sidebar.module.css'
@@ -16,6 +16,7 @@ const NAV_GROUPS = [
       { to: '/clientes', label: 'Clientes', icon: Users },
       { to: '/servicios', label: 'Servicios', icon: Package },
       { to: '/cotizaciones', label: 'Cotizaciones', icon: FileText },
+      { to: '/recibos', label: 'Recibos', icon: Receipt },
     ],
   },
   {

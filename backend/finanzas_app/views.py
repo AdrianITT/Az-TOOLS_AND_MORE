@@ -13,7 +13,7 @@ from calendar import monthrange
 
 from cotizador_project.mixins import OrganizationFilterMixin
 from cotizador_project.permissions import HasRolPermission
-from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda
+from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda, Recibo
 from .serializers import (
     CategoriaIngresoSerializer, IngresoSerializer,
     CategoriaGastoSerializer, GastoSerializer,
@@ -21,6 +21,7 @@ from .serializers import (
     MovimientoDetalleSerializer, GastoPorDiaSerializer,
     CategoriaDeudaSerializer, DeudaSerializer, PagoDeudaSerializer,
     DeudaResumenSerializer, ProximoVencimientoSerializer,
+    ReciboSerializer,
 )
 
 
@@ -550,3 +551,56 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         ]
         serializer = ProximoVencimientoSerializer(data, many=True)
         return Response(serializer.data)
+
+
+class ReciboViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
+    """Recibos independientes — pagos/entregas con detalles de cliente y producto"""
+
+    queryset = Recibo.objects.all()
+    serializer_class = ReciboSerializer
+    permission_classes = [IsAuthenticated, HasRolPermission]
+    permiso_por_accion = {
+        'create': 'crear', 'update': 'editar',
+        'partial_update': 'editar', 'destroy': 'eliminar',
+    }
+    filterset_fields = ['cliente', 'producto', 'fecha_creacion']
+    search_fields = ['cliente_nombre', 'producto_nombre', 'descripcion']
+    ordering_fields = ['fecha_creacion', 'monto_total', 'creado']
+    ordering = ['-fecha_creacion']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            organization=self.request.user.organization,
+            creado_por=self.request.user,
+        )
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def descargar_pdf(self, request, pk=None):
+        """Descarga el recibo en PDF"""
+        recibo = self.get_object()
+        from django.http import HttpResponse
+        from weasyprint import WeasyPrint
+        from django.template.loader import render_to_string
+
+        # Datos para el template
+        cliente = recibo.cliente.nombre if recibo.cliente else recibo.cliente_nombre
+        producto = recibo.producto.nombre if recibo.producto else recibo.producto_nombre
+        logo_url = None
+        if recibo.organization.logo:
+            logo_url = request.build_absolute_uri(recibo.organization.logo.url)
+
+        context = {
+            'recibo': recibo,
+            'cliente': cliente,
+            'producto': producto,
+            'creador': recibo.creado_por.get_full_name() if recibo.creado_por else 'Sistema',
+            'empresa': recibo.organization.nombre,
+            'logo_url': logo_url,
+            'monto_restante': recibo.monto_total - recibo.monto_pagado,
+        }
+
+        html_string = render_to_string('recibo.html', context)
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="recibo_{recibo.id}_{recibo.fecha_creacion}.pdf"'
+        WeasyPrint(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf(response)
+        return response

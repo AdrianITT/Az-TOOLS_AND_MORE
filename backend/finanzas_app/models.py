@@ -241,3 +241,57 @@ class PagoDeuda(models.Model):
 
     def __str__(self):
         return f"Pago ${self.monto} — {self.deuda.acreedor} ({self.fecha})"
+
+
+class Recibo(models.Model):
+    """Recibos de pagos/entregas — independiente de cotizaciones/finanzas"""
+
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='recibos'
+    )
+    cliente_nombre = models.CharField(max_length=200, help_text='Nombre del cliente (libre)')
+    cliente = models.ForeignKey(
+        'cotizador_project.Cliente',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recibos'
+    )
+    producto_nombre = models.CharField(max_length=200, help_text='Nombre del producto/servicio (libre)')
+    producto = models.ForeignKey(
+        'cotizador_project.Servicio',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recibos'
+    )
+    cantidad = models.DecimalField(max_digits=10, decimal_places=2)
+    cantidad_personas = models.PositiveSmallIntegerField(default=1)
+    descripcion = models.TextField(blank=True, default='')
+    monto_total = models.DecimalField(max_digits=12, decimal_places=2)
+    monto_pagado = models.DecimalField(max_digits=12, decimal_places=2)
+    fecha_creacion = models.DateField(auto_now_add=True)
+    creado_por = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recibos_creados'
+    )
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Recibo'
+        verbose_name_plural = 'Recibos'
+        indexes = [
+            models.Index(fields=['organization', 'fecha_creacion'], name='recibo_org_fecha_idx'),
+            models.Index(fields=['organization', 'cliente'], name='recibo_org_cliente_idx'),
+        ]
+        ordering = ['-fecha_creacion', '-creado']
+
+    def __str__(self):
+        cliente = self.cliente.nombre if self.cliente else self.cliente_nombre
+        return f"Recibo {cliente} — ${self.monto_total} ({self.fecha_creacion})"

@@ -9,6 +9,7 @@ router.register(r'categorias-gastos', views.CategoriaGastoViewSet, basename='cat
 router.register(r'gastos', views.GastoViewSet, basename='gasto')
 router.register(r'categorias-deudas', views.CategoriaDeudaViewSet, basename='categoria-deuda')
 router.register(r'deudas', views.DeudaViewSet, basename='deuda')
+router.register(r'recibos', views.ReciboViewSet, basename='recibo')
 
 urlpatterns = [
     path('recibos/analizar/', views.AnalizarRecibosView.as_view(), name='analizar-recibos'),

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda
+from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda, Recibo
 
 
 class _CategoriaUniquePorOrgMixin:
@@ -190,3 +190,40 @@ class ProximoVencimientoSerializer(serializers.Serializer):
     saldo_actual = serializers.DecimalField(max_digits=14, decimal_places=2)
     fecha_vencimiento = serializers.DateField(allow_null=True)
     dias_restantes = serializers.IntegerField(allow_null=True)
+
+
+class ReciboSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
+    cliente_display = serializers.SerializerMethodField()
+    producto_display = serializers.SerializerMethodField()
+    monto_restante = serializers.SerializerMethodField()
+
+    def get_cliente_display(self, obj):
+        if obj.cliente:
+            return obj.cliente.nombre
+        return obj.cliente_nombre
+
+    def get_producto_display(self, obj):
+        if obj.producto:
+            return obj.producto.nombre
+        return obj.producto_nombre
+
+    def get_monto_restante(self, obj):
+        return str(obj.monto_total - obj.monto_pagado)
+
+    class Meta:
+        model = Recibo
+        fields = [
+            'id', 'cliente', 'cliente_nombre', 'cliente_display',
+            'producto', 'producto_nombre', 'producto_display',
+            'cantidad', 'cantidad_personas', 'descripcion',
+            'monto_total', 'monto_pagado', 'monto_restante',
+            'fecha_creacion', 'creado_por', 'creado', 'actualizado',
+        ]
+        read_only_fields = ['id', 'monto_restante', 'fecha_creacion', 'creado_por', 'creado', 'actualizado']
+
+    def validate(self, data):
+        monto_total = data.get('monto_total')
+        monto_pagado = data.get('monto_pagado', 0)
+        if monto_pagado > monto_total:
+            raise serializers.ValidationError({'monto_pagado': 'No puede ser mayor al monto total.'})
+        return data

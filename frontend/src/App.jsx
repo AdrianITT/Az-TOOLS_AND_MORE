@@ -21,6 +21,7 @@ import { Servicios } from './pages/Servicios/Servicios'
 import { ServicioForm } from './pages/Servicios/ServicioForm'
 import { Cotizaciones } from './pages/Cotizaciones/Cotizaciones'
 import { CotizacionForm } from './pages/Cotizaciones/CotizacionForm'
+import { Recibos } from './pages/Recibos/Recibos'
 import { Usuarios } from './pages/Usuarios/Usuarios'
 import { Finanzas } from './pages/Finanzas/Finanzas'
 import { FibrasCatalogo } from './pages/Fibras/FibrasCatalogo'
@@ -75,6 +76,7 @@ function App() {
             <Route path="/cotizaciones" element={<Cotizaciones />} />
             <Route path="/cotizaciones/nueva" element={<CotizacionForm />} />
             <Route path="/cotizaciones/:id" element={<CotizacionForm />} />
+            <Route path="/recibos" element={<Recibos />} />
             <Route path="/finanzas" element={<Finanzas />} />
             <Route path="/finanzas/fibras" element={<FibrasCatalogo />} />
             <Route path="/finanzas/fibras/simular" element={<SimulacionForm />} />
