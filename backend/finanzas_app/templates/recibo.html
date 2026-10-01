@@ -87,7 +87,7 @@
                 <tr>
                     <td>{{ producto }}</td>
                     <td class="text-right">{{ recibo.cantidad }}</td>
-                    <td class="text-right">${{ recibo.monto_total|add:"-"|add:recibo.cantidad|add:"|floatformat:2" }}</td>
+                    <td class="text-right">${{ valor_unitario|floatformat:2 }}</td>
                     <td class="text-right"><strong>${{ recibo.monto_total|floatformat:2 }}</strong></td>
                 </tr>
             </tbody>

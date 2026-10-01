@@ -579,7 +579,7 @@ class ReciboViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         """Descarga el recibo en PDF"""
         recibo = self.get_object()
         from django.http import HttpResponse
-        from weasyprint import WeasyPrint
+        from weasyprint import HTML
         from django.template.loader import render_to_string
 
         # Datos para el template
@@ -587,20 +587,21 @@ class ReciboViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         producto = recibo.producto.nombre if recibo.producto else recibo.producto_nombre
         logo_url = None
         if recibo.organization.logo:
-            logo_url = request.build_absolute_uri(recibo.organization.logo.url)
+            logo_url = f'file://{recibo.organization.logo.path}'
 
         context = {
             'recibo': recibo,
             'cliente': cliente,
             'producto': producto,
-            'creador': recibo.creado_por.get_full_name() if recibo.creado_por else 'Sistema',
+            'creador': (recibo.creado_por.get_full_name() or recibo.creado_por.username) if recibo.creado_por else 'Sistema',
             'empresa': recibo.organization.nombre,
             'logo_url': logo_url,
             'monto_restante': recibo.monto_total - recibo.monto_pagado,
+            'valor_unitario': (recibo.monto_total / recibo.cantidad) if recibo.cantidad else recibo.monto_total,
         }
 
         html_string = render_to_string('recibo.html', context)
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="recibo_{recibo.id}_{recibo.fecha_creacion}.pdf"'
-        WeasyPrint(string=html_string, base_url=request.build_absolute_uri('/')).write_pdf(response)
+        HTML(string=html_string).write_pdf(response)
         return response

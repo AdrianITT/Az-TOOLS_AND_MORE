@@ -192,7 +192,7 @@ class ProximoVencimientoSerializer(serializers.Serializer):
     dias_restantes = serializers.IntegerField(allow_null=True)
 
 
-class ReciboSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
+class ReciboSerializer(serializers.ModelSerializer):
     cliente_display = serializers.SerializerMethodField()
     producto_display = serializers.SerializerMethodField()
     monto_restante = serializers.SerializerMethodField()
@@ -220,10 +220,30 @@ class ReciboSerializer(_ComprobanteRelativoMixin, serializers.ModelSerializer):
             'fecha_creacion', 'creado_por', 'creado', 'actualizado',
         ]
         read_only_fields = ['id', 'monto_restante', 'fecha_creacion', 'creado_por', 'creado', 'actualizado']
+        extra_kwargs = {
+            'cliente_nombre': {'required': False, 'allow_blank': True},
+            'producto_nombre': {'required': False, 'allow_blank': True},
+        }
 
     def validate(self, data):
-        monto_total = data.get('monto_total')
-        monto_pagado = data.get('monto_pagado', 0)
-        if monto_pagado > monto_total:
+        request = self.context.get('request')
+        org_id = request.user.organization_id if request else None
+        for fk, nombre, etiqueta in (('cliente', 'cliente_nombre', 'cliente'), ('producto', 'producto_nombre', 'producto o servicio')):
+            obj = data.get(fk)
+            if obj is not None and org_id and obj.organization_id != org_id:
+                raise serializers.ValidationError({fk: 'Selección inválida.'})
+            texto = (data.get(nombre) or '').strip()
+            if obj is not None and not texto:
+                texto = obj.nombre
+            if not texto and (self.instance is None or fk in data or nombre in data):
+                existente = getattr(self.instance, nombre, '') if self.instance else ''
+                if not existente:
+                    raise serializers.ValidationError({nombre: f'Indica el nombre del {etiqueta} o selecciona uno existente.'})
+                texto = existente
+            if texto:
+                data[nombre] = texto
+        monto_total = data.get('monto_total', getattr(self.instance, 'monto_total', None))
+        monto_pagado = data.get('monto_pagado', getattr(self.instance, 'monto_pagado', 0))
+        if monto_total is not None and monto_pagado > monto_total:
             raise serializers.ValidationError({'monto_pagado': 'No puede ser mayor al monto total.'})
         return data
