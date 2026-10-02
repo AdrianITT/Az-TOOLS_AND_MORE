@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from decimal import Decimal
-from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda, Recibo
+from django.db import transaction
+from .models import CategoriaIngreso, Ingreso, CategoriaGasto, Gasto, CategoriaDeuda, Deuda, PagoDeuda, Recibo, ReciboItem
 
 
 class _CategoriaUniquePorOrgMixin:
@@ -192,58 +193,159 @@ class ProximoVencimientoSerializer(serializers.Serializer):
     dias_restantes = serializers.IntegerField(allow_null=True)
 
 
+def atributos_de_servicio(servicio):
+    """Snapshot [{nombre, valor}] de los valores de un servicio, en el orden de su plantilla."""
+    valores = servicio.valores.select_related('atributo').order_by('atributo__orden', 'atributo__id')
+    return [{'nombre': v.atributo.nombre, 'valor': v.valor} for v in valores]
+
+
+class ReciboItemSerializer(serializers.ModelSerializer):
+    subtotal = serializers.SerializerMethodField()
+
+    def get_subtotal(self, obj):
+        return None if obj.subtotal is None else str(obj.subtotal)
+
+    class Meta:
+        model = ReciboItem
+        fields = [
+            'id', 'servicio', 'nombre', 'cantidad', 'precio_unitario',
+            'subtotal', 'fecha_servicio', 'atributos',
+        ]
+        read_only_fields = ['id', 'subtotal']
+        extra_kwargs = {
+            'nombre': {'required': False, 'allow_blank': True},
+            'atributos': {'required': False},
+        }
+
+    def validate_cantidad(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Debe ser mayor a 0.')
+        return value
+
+    def validate_precio_unitario(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError('No puede ser negativo.')
+        return value
+
+    def validate_atributos(self, value):
+        if not isinstance(value, list) or any(
+            not isinstance(a, dict) or 'nombre' not in a or 'valor' not in a for a in value
+        ):
+            raise serializers.ValidationError('Formato inválido: se espera una lista de {nombre, valor}.')
+        return [{'nombre': str(a['nombre']), 'valor': str(a['valor'])} for a in value]
+
+    def validate(self, data):
+        request = self.context.get('request')
+        org_id = request.user.organization_id if request else None
+        servicio = data.get('servicio')
+        if servicio is not None and org_id and servicio.organization_id != org_id:
+            raise serializers.ValidationError({'servicio': 'Selección inválida.'})
+        nombre = (data.get('nombre') or '').strip()
+        if not nombre and servicio is not None:
+            nombre = servicio.nombre
+        if not nombre:
+            raise serializers.ValidationError({'nombre': 'Indica el nombre del servicio o selecciona uno existente.'})
+        data['nombre'] = nombre
+        if servicio is not None:
+            # Prellenado desde el catálogo cuando el cliente no lo manda
+            if 'precio_unitario' not in data:
+                data['precio_unitario'] = servicio.precio_base
+            if 'atributos' not in data:
+                data['atributos'] = atributos_de_servicio(servicio)
+        return data
+
+
 class ReciboSerializer(serializers.ModelSerializer):
     cliente_display = serializers.SerializerMethodField()
-    producto_display = serializers.SerializerMethodField()
     monto_restante = serializers.SerializerMethodField()
+    total_servicios = serializers.SerializerMethodField()
+    items = ReciboItemSerializer(many=True, required=False)
 
     def get_cliente_display(self, obj):
         if obj.cliente:
             return obj.cliente.nombre
         return obj.cliente_nombre
 
-    def get_producto_display(self, obj):
-        if obj.producto:
-            return obj.producto.nombre
-        return obj.producto_nombre
-
     def get_monto_restante(self, obj):
         return str(obj.monto_total - obj.monto_pagado)
+
+    def get_total_servicios(self, obj):
+        return str(obj.total_servicios)
 
     class Meta:
         model = Recibo
         fields = [
             'id', 'cliente', 'cliente_nombre', 'cliente_display',
-            'producto', 'producto_nombre', 'producto_display',
-            'cantidad', 'cantidad_personas', 'descripcion',
-            'monto_total', 'monto_pagado', 'monto_restante',
-            'fecha_creacion', 'creado_por', 'creado', 'actualizado',
+            'items', 'cantidad_personas', 'descripcion',
+            'monto_total', 'total_servicios', 'monto_pagado', 'monto_restante',
+            'fecha_creacion', 'fecha_servicios',
+            'creado_por', 'creado', 'actualizado',
         ]
-        read_only_fields = ['id', 'monto_restante', 'fecha_creacion', 'creado_por', 'creado', 'actualizado']
+        read_only_fields = ['id', 'monto_restante', 'total_servicios', 'creado_por', 'creado', 'actualizado']
         extra_kwargs = {
             'cliente_nombre': {'required': False, 'allow_blank': True},
-            'producto_nombre': {'required': False, 'allow_blank': True},
+            'monto_total': {'required': False},
+            'monto_pagado': {'required': False},
+            'fecha_creacion': {'required': False},
         }
 
     def validate(self, data):
         request = self.context.get('request')
         org_id = request.user.organization_id if request else None
-        for fk, nombre, etiqueta in (('cliente', 'cliente_nombre', 'cliente'), ('producto', 'producto_nombre', 'producto o servicio')):
-            obj = data.get(fk)
-            if obj is not None and org_id and obj.organization_id != org_id:
-                raise serializers.ValidationError({fk: 'Selección inválida.'})
-            texto = (data.get(nombre) or '').strip()
-            if obj is not None and not texto:
-                texto = obj.nombre
-            if not texto and (self.instance is None or fk in data or nombre in data):
-                existente = getattr(self.instance, nombre, '') if self.instance else ''
-                if not existente:
-                    raise serializers.ValidationError({nombre: f'Indica el nombre del {etiqueta} o selecciona uno existente.'})
-                texto = existente
-            if texto:
-                data[nombre] = texto
+        obj = data.get('cliente')
+        if obj is not None and org_id and obj.organization_id != org_id:
+            raise serializers.ValidationError({'cliente': 'Selección inválida.'})
+        texto = (data.get('cliente_nombre') or '').strip()
+        if obj is not None and not texto:
+            texto = obj.nombre
+        if not texto and (self.instance is None or 'cliente' in data or 'cliente_nombre' in data):
+            existente = self.instance.cliente_nombre if self.instance else ''
+            if not existente:
+                raise serializers.ValidationError({'cliente_nombre': 'Indica el nombre del cliente o selecciona uno existente.'})
+            texto = existente
+        if texto:
+            data['cliente_nombre'] = texto
+
+        if self.instance is None and not data.get('items'):
+            raise serializers.ValidationError({'items': 'Agrega al menos un servicio al recibo.'})
+        if 'items' in data and not data['items']:
+            raise serializers.ValidationError({'items': 'Agrega al menos un servicio al recibo.'})
+
+        # Sin monto_total explícito se usa la suma de los servicios registrados
+        if data.get('monto_total') is None:
+            if self.instance is not None and 'items' not in data:
+                pass
+            else:
+                suma = sum(
+                    (i['cantidad'] * i['precio_unitario'] for i in data.get('items', []) if i.get('precio_unitario') is not None),
+                    Decimal('0.00'),
+                )
+                if suma > 0:
+                    data['monto_total'] = suma.quantize(Decimal('0.01'))
+                elif self.instance is None:
+                    raise serializers.ValidationError({'monto_total': 'Indica el monto total (los servicios no tienen precio registrado).'})
+        if data.get('monto_total') is not None and data['monto_total'] < 0:
+            raise serializers.ValidationError({'monto_total': 'No puede ser negativo.'})
+
         monto_total = data.get('monto_total', getattr(self.instance, 'monto_total', None))
-        monto_pagado = data.get('monto_pagado', getattr(self.instance, 'monto_pagado', 0))
+        monto_pagado = data.get('monto_pagado', getattr(self.instance, 'monto_pagado', Decimal('0')))
         if monto_total is not None and monto_pagado > monto_total:
             raise serializers.ValidationError({'monto_pagado': 'No puede ser mayor al monto total.'})
         return data
+
+    @transaction.atomic
+    def create(self, validated_data):
+        items = validated_data.pop('items', [])
+        validated_data.setdefault('monto_pagado', Decimal('0'))
+        recibo = Recibo.objects.create(**validated_data)
+        ReciboItem.objects.bulk_create([ReciboItem(recibo=recibo, **i) for i in items])
+        return recibo
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        items = validated_data.pop('items', None)
+        instance = super().update(instance, validated_data)
+        if items is not None:
+            instance.items.all().delete()
+            ReciboItem.objects.bulk_create([ReciboItem(recibo=instance, **i) for i in items])
+        return instance

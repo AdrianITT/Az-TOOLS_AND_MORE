@@ -1,3 +1,4 @@
+import datetime
 from decimal import Decimal
 from django.db import models
 from django.utils import timezone
@@ -259,20 +260,14 @@ class Recibo(models.Model):
         blank=True,
         related_name='recibos'
     )
-    producto_nombre = models.CharField(max_length=200, help_text='Nombre del producto/servicio (libre)')
-    producto = models.ForeignKey(
-        'cotizador_project.Servicio',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='recibos'
-    )
-    cantidad = models.DecimalField(max_digits=10, decimal_places=2)
     cantidad_personas = models.PositiveSmallIntegerField(default=1)
     descripcion = models.TextField(blank=True, default='')
     monto_total = models.DecimalField(max_digits=12, decimal_places=2)
     monto_pagado = models.DecimalField(max_digits=12, decimal_places=2)
-    fecha_creacion = models.DateField(auto_now_add=True)
+    # Editable; por defecto la fecha en que se crea el recibo.
+    fecha_creacion = models.DateField(default=datetime.date.today)
+    # Fecha opcional que aplica a todos los servicios sin fecha propia.
+    fecha_servicios = models.DateField(null=True, blank=True)
     creado_por = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -295,3 +290,43 @@ class Recibo(models.Model):
     def __str__(self):
         cliente = self.cliente.nombre if self.cliente else self.cliente_nombre
         return f"Recibo {cliente} — ${self.monto_total} ({self.fecha_creacion})"
+
+    @property
+    def total_servicios(self):
+        """Suma de los servicios registrados (con precio) del recibo."""
+        return sum((i.subtotal for i in self.items.all() if i.subtotal is not None), Decimal('0.00'))
+
+
+class ReciboItem(models.Model):
+    """Servicio/producto incluido en un recibo. `atributos` es una copia (snapshot)
+    de los valores del servicio al momento de agregarlo, para que el recibo no cambie
+    si luego se edita el catálogo."""
+
+    recibo = models.ForeignKey(Recibo, on_delete=models.CASCADE, related_name='items')
+    servicio = models.ForeignKey(
+        'cotizador_project.Servicio',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='recibo_items'
+    )
+    nombre = models.CharField(max_length=200, help_text='Nombre del producto/servicio')
+    cantidad = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+    # Null = sin precio registrado: no suma al total de servicios.
+    precio_unitario = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    fecha_servicio = models.DateField(null=True, blank=True)
+    atributos = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        verbose_name = 'Item de Recibo'
+        verbose_name_plural = 'Items de Recibo'
+        ordering = ['id']
+
+    def __str__(self):
+        return f"{self.nombre} x{self.cantidad} (recibo {self.recibo_id})"
+
+    @property
+    def subtotal(self):
+        if self.precio_unitario is None:
+            return None
+        return (self.cantidad * self.precio_unitario).quantize(Decimal('0.01'))

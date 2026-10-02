@@ -71,6 +71,11 @@ export function Recibos() {
 
   if (loading && recibos.length === 0) return <p>Cargando…</p>
 
+  // 'YYYY-MM-DD' con new Date() se interpreta en UTC y puede mostrar el día anterior
+  const formatFecha = (iso) => {
+    const [y, m, d] = (iso || '').split('-')
+    return y ? `${d}/${m}/${y}` : '—'
+  }
   const formatMoneda = (num) => `$${parseFloat(num || 0).toFixed(2)}`
 
   return (
@@ -105,11 +110,11 @@ export function Recibos() {
               rowKey={(r) => r.id}
               columns={[
                 { key: 'cliente_display', header: 'Cliente' },
-                { key: 'producto_display', header: 'Producto/Servicio' },
+                { key: 'items', header: 'Servicios', render: (r) => (r.items || []).map((i) => i.nombre).join(', ') || '—' },
                 { key: 'monto_total', header: 'Monto total', render: (r) => formatMoneda(r.monto_total) },
                 { key: 'monto_pagado', header: 'Pagado', render: (r) => formatMoneda(r.monto_pagado) },
                 { key: 'monto_restante', header: 'Restante', render: (r) => <span style={{ color: r.monto_restante === '0.00' ? '#27ae60' : '#e74c3c' }}>{formatMoneda(r.monto_restante)}</span> },
-                { key: 'fecha_creacion', header: 'Fecha', render: (r) => new Date(r.fecha_creacion).toLocaleDateString() },
+                { key: 'fecha_creacion', header: 'Fecha', render: (r) => formatFecha(r.fecha_creacion) },
                 {
                   key: 'acciones',
                   header: '',

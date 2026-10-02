@@ -37,6 +37,7 @@
         .amount.remaining { color: #e74c3c; }
 
         .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ecf0f1; text-align: center; font-size: 11px; color: #95a5a6; }
+        .atributos { margin-top: 4px; font-size: 11px; color: #7f8c8d; font-weight: 400; }
         .descripcion { margin: 20px 0; padding: 15px; background: #f8f9fa; border-left: 3px solid #3498db; font-size: 13px; color: #2c3e50; }
 
         .text-right { text-align: right; }
@@ -78,23 +79,40 @@
             <thead>
                 <tr>
                     <th>Producto / Servicio</th>
+                    <th>Fecha del servicio</th>
                     <th class="text-right">Cantidad</th>
                     <th class="text-right">Valor unitario</th>
                     <th class="text-right">Subtotal</th>
                 </tr>
             </thead>
             <tbody>
+                {% for item in items %}
                 <tr>
-                    <td>{{ producto }}</td>
-                    <td class="text-right">{{ recibo.cantidad }}</td>
-                    <td class="text-right">${{ valor_unitario|floatformat:2 }}</td>
-                    <td class="text-right"><strong>${{ recibo.monto_total|floatformat:2 }}</strong></td>
+                    <td>
+                        <strong>{{ item.nombre }}</strong>
+                        {% if item.atributos %}
+                        <div class="atributos">
+                            {% for a in item.atributos %}<div>{{ a.nombre }}: {{ a.valor }}</div>{% endfor %}
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td>{% if item.fecha_servicio %}{{ item.fecha_servicio|date:"d/m/Y" }}{% elif recibo.fecha_servicios %}{{ recibo.fecha_servicios|date:"d/m/Y" }}{% else %}—{% endif %}</td>
+                    <td class="text-right">{{ item.cantidad }}</td>
+                    <td class="text-right">{% if item.precio_unitario is not None %}${{ item.precio_unitario|floatformat:2 }}{% else %}—{% endif %}</td>
+                    <td class="text-right">{% if item.subtotal is not None %}<strong>${{ item.subtotal|floatformat:2 }}</strong>{% else %}—{% endif %}</td>
                 </tr>
+                {% endfor %}
             </tbody>
         </table>
 
         <div class="totales">
             <div class="totales-box">
+                {% if total_servicios and total_servicios != recibo.monto_total %}
+                <div class="total-row">
+                    <span class="label">Servicios registrados</span>
+                    <span class="amount">${{ total_servicios|floatformat:2 }}</span>
+                </div>
+                {% endif %}
                 <div class="total-row">
                     <span class="label">Monto total</span>
                     <span class="amount">${{ recibo.monto_total|floatformat:2 }}</span>

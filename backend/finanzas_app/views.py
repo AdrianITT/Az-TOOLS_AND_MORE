@@ -556,15 +556,15 @@ class DeudaViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 class ReciboViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
     """Recibos independientes — pagos/entregas con detalles de cliente y producto"""
 
-    queryset = Recibo.objects.all()
+    queryset = Recibo.objects.prefetch_related('items')
     serializer_class = ReciboSerializer
     permission_classes = [IsAuthenticated, HasRolPermission]
     permiso_por_accion = {
         'create': 'crear', 'update': 'editar',
         'partial_update': 'editar', 'destroy': 'eliminar',
     }
-    filterset_fields = ['cliente', 'producto', 'fecha_creacion']
-    search_fields = ['cliente_nombre', 'producto_nombre', 'descripcion']
+    filterset_fields = ['cliente', 'fecha_creacion']
+    search_fields = ['cliente_nombre', 'items__nombre', 'descripcion']
     ordering_fields = ['fecha_creacion', 'monto_total', 'creado']
     ordering = ['-fecha_creacion']
 
@@ -584,7 +584,6 @@ class ReciboViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
 
         # Datos para el template
         cliente = recibo.cliente.nombre if recibo.cliente else recibo.cliente_nombre
-        producto = recibo.producto.nombre if recibo.producto else recibo.producto_nombre
         logo_url = None
         if recibo.organization.logo:
             logo_url = f'file://{recibo.organization.logo.path}'
@@ -592,12 +591,12 @@ class ReciboViewSet(OrganizationFilterMixin, viewsets.ModelViewSet):
         context = {
             'recibo': recibo,
             'cliente': cliente,
-            'producto': producto,
             'creador': (recibo.creado_por.get_full_name() or recibo.creado_por.username) if recibo.creado_por else 'Sistema',
             'empresa': recibo.organization.nombre,
             'logo_url': logo_url,
             'monto_restante': recibo.monto_total - recibo.monto_pagado,
-            'valor_unitario': (recibo.monto_total / recibo.cantidad) if recibo.cantidad else recibo.monto_total,
+            'items': list(recibo.items.all()),
+            'total_servicios': recibo.total_servicios,
         }
 
         html_string = render_to_string('recibo.html', context)
